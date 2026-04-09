@@ -24,6 +24,9 @@ require('./commands/migrate')(program);
 require('./commands/status')(program);
 require('./commands/config')(program);
 require('./commands/serve')(program);
+require('./commands/pull')(program);
+require('./commands/models')(program);
+require('./commands/bench')(program);
 
 // Global error handler
 program.exitOverride();

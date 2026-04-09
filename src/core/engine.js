@@ -150,9 +150,17 @@ class UltraEngine extends EventEmitter {
 
   /**
    * Run inference and return a TokenStreamer.
-   * In a real implementation, the chunk bytes would be fed to a GGML / ONNX runner.
+   * @param {string|Array} promptOrMessages  Plain string or [{role,content}] array for multi-turn
+   * @param {object} opts
+   * @param {string}   opts.system       System prompt (prepended when promptOrMessages is a string)
+   * @param {number}   opts.maxTokens
+   * @param {number}   opts.temperature
+   * @param {number}   opts.topP
+   * @param {number}   opts.speed        Target t/s (0 = unlimited)
+   * @param {string}   opts.format       'text'|'json'|'sse'
+   * @param {AbortSignal} opts.signal
    */
-  infer(prompt, opts = {}) {
+  infer(promptOrMessages, opts = {}) {
     this._assertReady();
     if (!this.loadedModel) throw new Error('No model loaded. Call loadModel() first.');
 
@@ -161,16 +169,16 @@ class UltraEngine extends EventEmitter {
       tokensPerSecondTarget: opts.speed ?? 0,
     });
 
-    setImmediate(() => this._runInference(prompt, opts, streamer));
+    setImmediate(() => this._runInference(promptOrMessages, opts, streamer));
     return streamer;
   }
 
-  async _runInference(prompt, opts, streamer) {
+  async _runInference(promptOrMessages, opts, streamer) {
     try {
       if (this._backend === 'ollama') {
-        await this._runOllama(prompt, opts, streamer);
+        await this._runOllama(promptOrMessages, opts, streamer);
       } else {
-        await this._runMock(prompt, opts, streamer);
+        await this._runMock(promptOrMessages, opts, streamer);
       }
     } catch (err) {
       streamer.destroy(err);
@@ -180,17 +188,28 @@ class UltraEngine extends EventEmitter {
 
   // ─── Ollama backend (real inference) ────────────────────────────────────
 
-  async _runOllama(prompt, opts, streamer) {
+  async _runOllama(promptOrMessages, opts, streamer) {
     const modelName = this.loadedModel.ollamaName ?? this.loadedModel.path;
-    const messages  = [
-      ...(opts.system ? [{ role: 'system', content: opts.system }] : []),
-      { role: 'user', content: prompt },
-    ];
+
+    // Accept either a plain string or a pre-built messages array
+    let messages;
+    if (Array.isArray(promptOrMessages)) {
+      messages = promptOrMessages;
+    } else {
+      messages = [
+        ...(opts.system ? [{ role: 'system', content: opts.system }] : []),
+        { role: 'user', content: promptOrMessages },
+      ];
+    }
 
     const { totalTokens, evalDuration } = await ollamaBackend.streamChat({
       model:    modelName,
       messages,
-      options:  { maxTokens: opts.maxTokens ?? 2048, temperature: opts.temperature },
+      options:  {
+        maxTokens:   opts.maxTokens   ?? 2048,
+        temperature: opts.temperature ?? 0.7,
+        topP:        opts.topP        ?? 0.9,
+      },
       onToken:  token => streamer.write(token),
       signal:   opts.signal,
     });
@@ -205,7 +224,10 @@ class UltraEngine extends EventEmitter {
 
   // ─── Mock backend (fallback — no Ollama) ────────────────────────────────
 
-  async _runMock(prompt, opts, streamer) {
+  async _runMock(promptOrMessages, opts, streamer) {
+    const prompt    = Array.isArray(promptOrMessages)
+      ? promptOrMessages.filter(m => m.role === 'user').pop()?.content ?? ''
+      : promptOrMessages;
     const maxTokens = opts.maxTokens ?? 512;
     const tokens    = this._mockTokenize(prompt, maxTokens);
     for (const token of tokens) {
