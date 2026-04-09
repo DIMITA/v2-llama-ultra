@@ -147,31 +147,63 @@ class UltraEngine extends EventEmitter {
 
   async _runInference(prompt, opts, streamer) {
     const { chunker, numLayers, precisionMap } = this.loadedModel;
-    const maxTokens = opts.maxTokens ?? 512;
+    const maxTokens    = opts.maxTokens ?? 512;
+    const layersPerChunk = Math.ceil(numLayers / Math.max(chunker.chunks.length, 1));
 
     try {
-      // Load chunks layer by layer with prefetch
-      for (let layer = 0; layer < numLayers; layer++) {
-        const chunkId = Math.floor(layer / Math.ceil(numLayers / chunker.chunks.length));
+      let lastChunkId = -1;
 
-        // Check cache first
+      // Process layers one chunk at a time — load → use → unload
+      for (let layer = 0; layer < numLayers; layer++) {
+        const chunkId  = Math.floor(layer / layersPerChunk);
         const cacheKey = `chunk:${chunkId}`;
-        if (!this.cache.has(cacheKey)) {
-          const buf    = await chunker.loadChunk(chunkId);
-          const sizeMb = buf.length / (1024 * 1024);
-          this.cache.set(cacheKey, buf, sizeMb);
+
+        // Load new chunk if we moved to the next one
+        if (chunkId !== lastChunkId) {
+          // Evict previous chunk immediately — no need to keep it
+          if (lastChunkId >= 0) {
+            this.cache.delete(`chunk:${lastChunkId}`);
+            chunker.unloadChunk(lastChunkId);
+          }
+
+          // Load current chunk (only if not already prefetched)
+          if (!this.cache.has(cacheKey)) {
+            const buf    = await chunker.loadChunk(chunkId);
+            const sizeMb = buf.length / (1024 * 1024);
+            this.cache.set(cacheKey, buf, sizeMb);
+          }
+
+          // Prefetch ONLY the next chunk (window = 1)
+          const nextId = chunkId + 1;
+          if (nextId < chunker.chunks.length && !this.cache.has(`chunk:${nextId}`)) {
+            // Non-blocking prefetch in background
+            setImmediate(async () => {
+              try {
+                const buf = await chunker.loadChunk(nextId);
+                this.cache.set(`chunk:${nextId}`, buf, buf.length / (1024 * 1024));
+              } catch (_) {}
+            });
+          }
+
+          lastChunkId = chunkId;
+          this.emit('inference:chunk', {
+            chunkId,
+            ramMb: Math.round(this.cache.usedMb),
+            maxMb: this.cache.maxSizeMb,
+          });
         }
 
-        // Prefetch next chunks
-        await this.cache.prefetch(chunkId, chunker.chunks.length, async (id) => {
-          const buf = await chunker.loadChunk(id);
-          return { data: buf, sizeMb: buf.length / (1024 * 1024) };
-        });
-
         this.emit('inference:layer', { layer, precision: precisionMap[layer]?.quantization });
+        await _tick();
       }
 
-      // Simulate token generation
+      // Free last chunk after forward pass
+      if (lastChunkId >= 0) {
+        this.cache.delete(`chunk:${lastChunkId}`);
+        chunker.unloadChunk(lastChunkId);
+      }
+
+      // Stream tokens
       const tokens = this._mockTokenize(prompt, maxTokens);
       for (const token of tokens) {
         streamer.write(token);
