@@ -1,0 +1,45 @@
+# Dev / tests
+tests/
+*.test.js
+*.spec.js
+.eslintrc*
+.eslintignore
+nodemon.json
+
+# Models and data (can be huge)
+models/
+data/
+downloads/
+tmp/
+*.db
+*.db-journal
+*.gguf
+*.ggml
+*.bin
+
+# Desktop app (published separately)
+desktop/
+
+# Landing page (not needed at runtime)
+landing/
+
+# Git and CI
+.git/
+.github/
+.gitignore
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Chunks cache
+.chunks/
