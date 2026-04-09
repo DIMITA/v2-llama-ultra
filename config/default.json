@@ -1,0 +1,14 @@
+{
+  "_comment": "Default configuration — override via .env or llama-ultra config set <key> <value>",
+  "modelsDir":       "~/.llama-ultra/models",
+  "maxCacheSizeMb":  2048,
+  "quantization":    "auto",
+  "enableGPU":       true,
+  "maxRamPercent":   80,
+  "pricingEnabled":  true,
+  "apiPort":         3000,
+  "apiHost":         "localhost",
+  "logLevel":        "info",
+  "prefetchWindow":  2,
+  "chunkSizeMb":     256
+}

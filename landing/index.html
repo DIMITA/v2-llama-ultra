@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLaMA Ultra — Run Any AI Model on Any Machine</title>
+  <meta name="description" content="Ultra-light AI model loader. Run LLaMA 70B on a 4GB RAM laptop. Adaptive quantization, intelligent streaming, predictive caching." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ── NAV ──────────────────────────────────────────────────────────────── -->
+  <nav class="nav" id="nav">
+    <div class="nav__inner">
+      <a href="#" class="nav__logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">LLaMA<span class="logo-accent">Ultra</span></span>
+      </a>
+      <ul class="nav__links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#benchmarks">Benchmarks</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#docs">Docs</a></li>
+      </ul>
+      <div class="nav__cta">
+        <a href="#pricing" class="btn btn--ghost">Get started</a>
+        <a href="https://github.com/dimita/v2-llama-ultra" class="btn btn--primary" target="_blank" rel="noopener">
+          GitHub →
+        </a>
+      </div>
+      <button class="nav__burger" id="navBurger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── HERO ─────────────────────────────────────────────────────────────── -->
+  <section class="hero" id="hero">
+    <div class="hero__bg">
+      <div class="grid-lines"></div>
+      <div class="glow glow--1"></div>
+      <div class="glow glow--2"></div>
+    </div>
+    <div class="container">
+      <div class="badge animate-fade-up">
+        <span class="badge__dot"></span>
+        v1.0 — Now Open Source
+      </div>
+      <h1 class="hero__title animate-fade-up delay-1">
+        Run <span class="gradient-text">any AI model</span><br />
+        on <span class="gradient-text">any machine</span>
+      </h1>
+      <p class="hero__sub animate-fade-up delay-2">
+        LLaMA Ultra intelligently compresses, streams, and adapts AI models
+        to your hardware in real-time. No GPU required. No cloud dependency.
+        Just pure local intelligence.
+      </p>
+      <div class="hero__actions animate-fade-up delay-3">
+        <a href="#pricing" class="btn btn--xl btn--primary">
+          Start for free
+        </a>
+        <a href="#how-it-works" class="btn btn--xl btn--ghost">
+          See how it works ↓
+        </a>
+      </div>
+
+      <!-- Terminal demo -->
+      <div class="terminal animate-fade-up delay-4">
+        <div class="terminal__bar">
+          <span class="dot dot--red"></span>
+          <span class="dot dot--yellow"></span>
+          <span class="dot dot--green"></span>
+          <span class="terminal__title">llama-ultra</span>
+        </div>
+        <div class="terminal__body" id="terminalBody">
+          <div class="term-line"><span class="term-prompt">$</span> llama-ultra run llama-3-70b</div>
+          <div class="term-line term-dim">  Detecting hardware…</div>
+          <div class="term-line term-ok">  ✓ Profile: medium · 8.2 GB free · INT8 mode</div>
+          <div class="term-line term-dim">  Streaming model chunks (256 MB each)…</div>
+          <div class="term-line term-info">  ⚡ Compressed: 26 GB → 6.7 GB  (3.9×)</div>
+          <div class="term-line term-ok">  ✓ Model ready in 4.2s</div>
+          <div class="term-line"><span class="term-prompt">You &gt;</span> <span class="term-cursor" id="typingCursor"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats container animate-fade-up delay-5">
+      <div class="stat">
+        <div class="stat__value">4×</div>
+        <div class="stat__label">less RAM needed</div>
+      </div>
+      <div class="stat__divider"></div>
+      <div class="stat">
+        <div class="stat__value">10×</div>
+        <div class="stat__label">smaller on disk</div>
+      </div>
+      <div class="stat__divider"></div>
+      <div class="stat">
+        <div class="stat__value">0</div>
+        <div class="stat__label">GPU required</div>
+      </div>
+      <div class="stat__divider"></div>
+      <div class="stat">
+        <div class="stat__value">100%</div>
+        <div class="stat__label">offline & private</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── COMPARED TO ───────────────────────────────────────────────────────── -->
+  <section class="compare section" id="compare">
+    <div class="container">
+      <div class="section-label">vs the competition</div>
+      <h2 class="section-title">Why LLaMA Ultra?</h2>
+      <p class="section-sub">We're not another Ollama wrapper. We're the engine that should have existed.</p>
+      <div class="compare-table-wrap">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>llama.cpp</th>
+              <th>Ollama</th>
+              <th>LM Studio</th>
+              <th class="highlight-col">LLaMA Ultra</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Intelligent streaming</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+            <tr>
+              <td>Adaptive quantization</td>
+              <td class="partial">manual</td>
+              <td class="partial">manual</td>
+              <td class="partial">manual</td>
+              <td class="yes highlight-col">auto ✓</td>
+            </tr>
+            <tr>
+              <td>Predictive chunk cache</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+            <tr>
+              <td>Hardware auto-detection</td>
+              <td class="partial">basic</td>
+              <td class="partial">basic</td>
+              <td class="partial">basic</td>
+              <td class="yes highlight-col">deep ✓</td>
+            </tr>
+            <tr>
+              <td>Mixed-precision layers</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+            <tr>
+              <td>OpenAI-compatible API</td>
+              <td class="no">✗</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+            <tr>
+              <td>Node.js / Python SDK</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="no">✗</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+            <tr>
+              <td>Self-hosted (no billing)</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes highlight-col">✓</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FEATURES ─────────────────────────────────────────────────────────── -->
+  <section class="features section" id="features">
+    <div class="container">
+      <div class="section-label">capabilities</div>
+      <h2 class="section-title">Built for the edge, ready for production</h2>
+      <p class="section-sub">Every feature designed to squeeze maximum performance out of minimum hardware.</p>
+
+      <div class="features-grid">
+
+        <div class="feature-card feature-card--wide">
+          <div class="feature-card__icon">⚡</div>
+          <h3>Intelligent Streaming</h3>
+          <p>Loads only the transformer layers needed at each inference step. No more loading the full model before generating the first token. Latency reduced by up to 80%.</p>
+          <div class="feature-tag">Core Engine</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">🎯</div>
+          <h3>Adaptive Quantization</h3>
+          <p>Automatically selects INT4 / INT8 / FP16 based on your available RAM. Edge layers stay at higher precision for quality.</p>
+          <div class="feature-tag">Auto</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">💾</div>
+          <h3>Predictive LRU Cache</h3>
+          <p>Prefetches the next 2 chunks while computing the current one. Cache hit rate > 90% in benchmarks.</p>
+          <div class="feature-tag">Cache</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">🔍</div>
+          <h3>Hardware Auto-Profile</h3>
+          <p>Deep CPU/RAM/GPU detection maps your machine to one of 5 performance profiles. Zero configuration needed.</p>
+          <div class="feature-tag">Detection</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">🧩</div>
+          <h3>Mixed-Precision Layers</h3>
+          <p>Critical edge layers run at FP16 for accuracy, while middle layers are aggressively quantized. Best quality-per-byte ratio.</p>
+          <div class="feature-tag">Precision</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">🌐</div>
+          <h3>OpenAI-Compatible API</h3>
+          <p>Drop-in replacement for the OpenAI API. Works with any tool that supports <code>/v1/chat/completions</code>.</p>
+          <div class="feature-tag">API</div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card__icon">📦</div>
+          <h3>Node.js & Python SDK</h3>
+          <p>First-class SDK with streaming support, embeddings, and the OpenAI <code>chat.completions.create</code> interface.</p>
+          <div class="feature-tag">SDK</div>
+        </div>
+
+        <div class="feature-card feature-card--wide">
+          <div class="feature-card__icon">🔒</div>
+          <h3>100% Private & Offline</h3>
+          <p>All inference runs locally. No data ever leaves your machine. Perfect for enterprise, healthcare, legal, and sensitive workloads. Self-host with pricing completely disabled in one config flag.</p>
+          <div class="feature-tag">Privacy</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HOW IT WORKS ──────────────────────────────────────────────────────── -->
+  <section class="how section" id="how-it-works">
+    <div class="container">
+      <div class="section-label">architecture</div>
+      <h2 class="section-title">How it works</h2>
+      <p class="section-sub">Four stages. One ultra-optimized inference pipeline.</p>
+
+      <div class="how-steps">
+        <div class="how-step">
+          <div class="how-step__num">01</div>
+          <div class="how-step__content">
+            <h3>Hardware Detection</h3>
+            <p>LLaMA Ultra scans your CPU cores, free RAM, and GPU VRAM to build a hardware profile. This happens in milliseconds and is fully automatic.</p>
+            <div class="code-snippet">
+              <pre><code>Profile: medium
+RAM: 6.2 GB free
+GPU: none
+→ INT8, 256MB chunks</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="how-connector"></div>
+
+        <div class="how-step">
+          <div class="how-step__num">02</div>
+          <div class="how-step__content">
+            <h3>Adaptive Quantization</h3>
+            <p>The model is compressed on the fly using the best quantization level for your hardware. Edge transformer layers keep higher precision.</p>
+            <div class="code-snippet">
+              <pre><code>LLaMA 7B FP32 → 26 GB
+→ INT8 quantized  → 6.7 GB
+→ Reduction: 3.9×</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="how-connector"></div>
+
+        <div class="how-step">
+          <div class="how-step__num">03</div>
+          <div class="how-step__content">
+            <h3>Intelligent Chunking</h3>
+            <p>The model is split into 256MB chunks. Only the layers needed for the current inference step are in RAM at any time. Chunks are evicted when not needed.</p>
+            <div class="code-snippet">
+              <pre><code>32 layers → 8 chunks (256MB ea.)
+Cache: [■■■□□□□□]
+RAM: 768 MB / 2048 MB</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="how-connector"></div>
+
+        <div class="how-step">
+          <div class="how-step__num">04</div>
+          <div class="how-step__content">
+            <h3>Streaming Inference</h3>
+            <p>Tokens stream out as soon as they're generated. Back-pressure and adaptive throttling prevent RAM spikes. Works over SSE, WebSocket, or stdio.</p>
+            <div class="code-snippet">
+              <pre><code>AI &gt; The answer is 42. Here is
+     the full explanation...
+     [128 tokens · 14.2 t/s]</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── BENCHMARKS ────────────────────────────────────────────────────────── -->
+  <section class="benchmarks section" id="benchmarks">
+    <div class="container">
+      <div class="section-label">performance</div>
+      <h2 class="section-title">Real-world benchmarks</h2>
+      <p class="section-sub">LLaMA 7B — MacBook Air M1 (8GB RAM), no GPU offload</p>
+
+      <div class="bench-cards">
+        <div class="bench-card">
+          <div class="bench-card__label">Storage</div>
+          <div class="bench-bars">
+            <div class="bench-bar-row">
+              <span>FP32</span>
+              <div class="bench-bar" style="--w:100%"><span>26 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>llama.cpp</span>
+              <div class="bench-bar bench-bar--blue" style="--w:20%"><span>5.2 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT8</span>
+              <div class="bench-bar bench-bar--green" style="--w:26%"><span>6.7 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT4</span>
+              <div class="bench-bar bench-bar--accent" style="--w:12%"><span>3.1 GB</span></div>
+            </div>
+          </div>
+          <div class="bench-note">Lower is better</div>
+        </div>
+
+        <div class="bench-card">
+          <div class="bench-card__label">RAM at inference</div>
+          <div class="bench-bars">
+            <div class="bench-bar-row">
+              <span>Ollama</span>
+              <div class="bench-bar" style="--w:90%"><span>7.2 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>llama.cpp</span>
+              <div class="bench-bar bench-bar--blue" style="--w:70%"><span>5.6 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT8</span>
+              <div class="bench-bar bench-bar--green" style="--w:35%"><span>2.8 GB</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT4</span>
+              <div class="bench-bar bench-bar--accent" style="--w:18%"><span>1.4 GB</span></div>
+            </div>
+          </div>
+          <div class="bench-note">Lower is better</div>
+        </div>
+
+        <div class="bench-card">
+          <div class="bench-card__label">Tokens/second</div>
+          <div class="bench-bars">
+            <div class="bench-bar-row">
+              <span>Ollama</span>
+              <div class="bench-bar" style="--w:35%"><span>7 t/s</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>llama.cpp</span>
+              <div class="bench-bar bench-bar--blue" style="--w:50%"><span>10 t/s</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT8</span>
+              <div class="bench-bar bench-bar--green" style="--w:70%"><span>14 t/s</span></div>
+            </div>
+            <div class="bench-bar-row">
+              <span>Ultra INT4</span>
+              <div class="bench-bar bench-bar--accent" style="--w:100%"><span>22 t/s</span></div>
+            </div>
+          </div>
+          <div class="bench-note">Higher is better</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SDK DEMO ──────────────────────────────────────────────────────────── -->
+  <section class="sdk-demo section" id="docs">
+    <div class="container">
+      <div class="section-label">developer experience</div>
+      <h2 class="section-title">Drop-in. Familiar. Powerful.</h2>
+      <p class="section-sub">Built for developers. OpenAI-compatible from day one.</p>
+
+      <div class="code-tabs">
+        <div class="code-tabs__nav">
+          <button class="code-tab active" data-tab="basic">Basic usage</button>
+          <button class="code-tab" data-tab="stream">Streaming</button>
+          <button class="code-tab" data-tab="openai">OpenAI-compat</button>
+          <button class="code-tab" data-tab="cli">CLI</button>
+        </div>
+
+        <div class="code-panel active" data-panel="basic">
+          <pre><code class="language-js"><span class="c">// Install: npm install v2-llama-ultra</span>
+<span class="k">const</span> { <span class="f">createClient</span> } = <span class="f">require</span>(<span class="s">'v2-llama-ultra'</span>);
+
+<span class="c">// Auto-detects your hardware, picks best settings</span>
+<span class="k">const</span> client = <span class="k">await</span> <span class="f">createClient</span>({
+  modelsDir:    <span class="s">'./models'</span>,
+  quantization: <span class="s">'auto'</span>,   <span class="c">// or 'int4' | 'int8' | 'fp16'</span>
+});
+
+<span class="k">await</span> client.<span class="f">load</span>(<span class="s">'llama-3-7b.gguf'</span>);
+
+<span class="k">const</span> text = <span class="k">await</span> client.<span class="f">generate</span>(
+  <span class="s">'Explain quantum computing in 3 sentences'</span>
+);
+
+console.<span class="f">log</span>(text);</code></pre>
+        </div>
+
+        <div class="code-panel" data-panel="stream">
+          <pre><code class="language-js"><span class="k">const</span> { <span class="f">createClient</span> } = <span class="f">require</span>(<span class="s">'v2-llama-ultra'</span>);
+
+<span class="k">const</span> client = <span class="k">await</span> <span class="f">createClient</span>();
+<span class="k">await</span> client.<span class="f">load</span>(<span class="s">'llama-3-7b.gguf'</span>);
+
+<span class="c">// Streams tokens as they're generated</span>
+<span class="k">const</span> stream = client.<span class="f">stream</span>(<span class="s">'Write a poem about AI'</span>);
+
+stream.<span class="f">on</span>(<span class="s">'data'</span>, token => process.stdout.<span class="f">write</span>(token));
+stream.<span class="f">on</span>(<span class="s">'stream:done'</span>, ({ tokenCount, elapsed }) => {
+  <span class="k">const</span> tps = (tokenCount / elapsed * <span class="n">1000</span>).<span class="f">toFixed</span>(<span class="n">1</span>);
+  console.<span class="f">log</span>(<span class="s">`\n[${tokenCount} tokens · ${tps} t/s]`</span>);
+});</code></pre>
+        </div>
+
+        <div class="code-panel" data-panel="openai">
+          <pre><code class="language-js"><span class="k">const</span> { <span class="f">createClient</span> } = <span class="f">require</span>(<span class="s">'v2-llama-ultra'</span>);
+<span class="k">const</span> client = <span class="k">await</span> <span class="f">createClient</span>();
+
+<span class="c">// OpenAI-compatible chat API</span>
+<span class="k">const</span> response = <span class="k">await</span> client.chat.completions.<span class="f">create</span>({
+  model:    <span class="s">'llama-3-7b.gguf'</span>,
+  messages: [
+    { role: <span class="s">'system'</span>,  content: <span class="s">'You are a helpful assistant.'</span> },
+    { role: <span class="s">'user'</span>,    content: <span class="s">'What is 2+2?'</span> },
+  ],
+  max_tokens: <span class="n">256</span>,
+  stream:     <span class="k">false</span>,
+});
+
+console.<span class="f">log</span>(response.choices[<span class="n">0</span>].message.content);
+
+<span class="c">// Also works as HTTP server — drop-in for the OpenAI API:</span>
+<span class="c">// POST http://localhost:3000/v1/chat/completions</span></code></pre>
+        </div>
+
+        <div class="code-panel" data-panel="cli">
+          <pre><code class="language-bash"><span class="c"># Install globally</span>
+npm install -g v2-llama-ultra
+
+<span class="c"># Check your hardware profile</span>
+llama-ultra status
+
+<span class="c"># Pre-optimize a model (chunk + quantize)</span>
+llama-ultra optimize llama-3-70b.gguf --layers 80
+
+<span class="c"># Interactive chat</span>
+llama-ultra run llama-3-7b.gguf --quantization int8
+
+<span class="c"># Start HTTP API server (OpenAI-compatible)</span>
+llama-ultra serve --port 3000 --no-pricing
+
+<span class="c"># Disable pricing (self-hosted mode)</span>
+llama-ultra config pricing off</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PRICING ───────────────────────────────────────────────────────────── -->
+  <section class="pricing section" id="pricing">
+    <div class="container">
+      <div class="section-label">pricing</div>
+      <h2 class="section-title">Simple, honest pricing</h2>
+      <p class="section-sub">
+        Start free. Scale as you grow. Or
+        <strong>self-host with billing completely disabled</strong> — one config flag.
+      </p>
+
+      <!-- Billing toggle -->
+      <div class="billing-toggle">
+        <span class="billing-toggle__label" id="monthlyLabel">Monthly</span>
+        <button class="toggle-btn" id="billingToggle" aria-label="Switch billing period">
+          <span class="toggle-btn__knob"></span>
+        </button>
+        <span class="billing-toggle__label" id="yearlyLabel">
+          Yearly <span class="save-badge">Save 2 months</span>
+        </span>
+      </div>
+
+      <div class="pricing-grid" id="pricingGrid">
+
+        <!-- Free -->
+        <div class="plan-card">
+          <div class="plan-card__header">
+            <div class="plan-name">Free</div>
+            <div class="plan-price">
+              <span class="plan-price__amount" data-monthly="0" data-yearly="0">$0</span>
+              <span class="plan-price__per">/month</span>
+            </div>
+            <div class="plan-desc">Get started — run lightweight models locally</div>
+          </div>
+          <ul class="plan-features">
+            <li class="yes">50 requests/day</li>
+            <li class="yes">Models up to 7B parameters</li>
+            <li class="yes">INT4 quantization</li>
+            <li class="yes">CLI access</li>
+            <li class="no">Streaming</li>
+            <li class="no">API access</li>
+            <li class="no">Commercial use</li>
+          </ul>
+          <a href="#" class="btn btn--outline btn--full">Start for free</a>
+        </div>
+
+        <!-- Pro -->
+        <div class="plan-card plan-card--featured">
+          <div class="plan-badge">Most popular</div>
+          <div class="plan-card__header">
+            <div class="plan-name">Pro</div>
+            <div class="plan-price">
+              <span class="plan-price__amount" data-monthly="19" data-yearly="16">$19</span>
+              <span class="plan-price__per">/month</span>
+            </div>
+            <div class="plan-desc">For developers & power users</div>
+          </div>
+          <ul class="plan-features">
+            <li class="yes">2,000 requests/day</li>
+            <li class="yes">Models up to 30B parameters</li>
+            <li class="yes">INT4, INT8, FP16</li>
+            <li class="yes">Streaming</li>
+            <li class="yes">Full API access</li>
+            <li class="yes">Commercial use</li>
+            <li class="no">Priority support</li>
+          </ul>
+          <a href="#" class="btn btn--primary btn--full">Get Pro</a>
+        </div>
+
+        <!-- Team -->
+        <div class="plan-card">
+          <div class="plan-card__header">
+            <div class="plan-name">Team</div>
+            <div class="plan-price">
+              <span class="plan-price__amount" data-monthly="79" data-yearly="66">$79</span>
+              <span class="plan-price__per">/month</span>
+            </div>
+            <div class="plan-desc">For small teams — all features included</div>
+          </div>
+          <ul class="plan-features">
+            <li class="yes">20,000 requests/day</li>
+            <li class="yes">Models up to 70B</li>
+            <li class="yes">All quantization levels</li>
+            <li class="yes">Streaming + API</li>
+            <li class="yes">5 seats</li>
+            <li class="yes">Priority support</li>
+            <li class="yes">Commercial use</li>
+          </ul>
+          <a href="#" class="btn btn--outline btn--full">Get Team</a>
+        </div>
+
+        <!-- Enterprise -->
+        <div class="plan-card plan-card--enterprise">
+          <div class="plan-card__header">
+            <div class="plan-name">Enterprise</div>
+            <div class="plan-price">
+              <span class="plan-price__amount">Custom</span>
+            </div>
+            <div class="plan-desc">Custom deployment — on-premise, SLA, SSO</div>
+          </div>
+          <ul class="plan-features">
+            <li class="yes">Unlimited requests</li>
+            <li class="yes">Any model size</li>
+            <li class="yes">On-premise deployment</li>
+            <li class="yes">SSO / SAML</li>
+            <li class="yes">Audit logs</li>
+            <li class="yes">Custom SLA</li>
+            <li class="yes">Dedicated support</li>
+          </ul>
+          <a href="mailto:enterprise@llama-ultra.dev" class="btn btn--outline btn--full">Contact us</a>
+        </div>
+
+      </div>
+
+      <!-- Self-hosted callout -->
+      <div class="self-hosted-callout">
+        <div class="self-hosted-callout__icon">🔓</div>
+        <div>
+          <strong>Want to self-host with no billing at all?</strong>
+          <p>Set <code>PRICING_ENABLED=false</code> in your <code>.env</code> or run <code>llama-ultra config pricing off</code> — all limits are removed, no account required.</p>
+        </div>
+        <a href="https://github.com/dimita/v2-llama-ultra" class="btn btn--ghost" target="_blank" rel="noopener">
+          Self-host →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FAQ ───────────────────────────────────────────────────────────────── -->
+  <section class="faq section" id="faq">
+    <div class="container faq__inner">
+      <div>
+        <div class="section-label">FAQ</div>
+        <h2 class="section-title">Common questions</h2>
+      </div>
+      <div class="faq-list">
+
+        <details class="faq-item">
+          <summary>Does it really work on 4GB RAM?</summary>
+          <p>Yes. With INT4 quantization, LLaMA 7B runs comfortably in ~1.4GB RAM. Even a 13B model fits in 4GB. The chunking engine only keeps 2–3 layers in memory at a time.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>What models are supported?</summary>
+          <p>Any model in GGUF format works out of the box (LLaMA 2/3, Mistral, Mixtral, Phi-3, Falcon, etc.). Support for Stable Diffusion and Whisper is on the roadmap.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>How do I disable pricing?</summary>
+          <p>Simply set <code>PRICING_ENABLED=false</code> in your <code>.env</code> file, or run <code>llama-ultra config pricing off</code>. All limits are removed instantly. No account or payment needed.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Is it compatible with the OpenAI API?</summary>
+          <p>Yes. The <code>/v1/chat/completions</code> and <code>/v1/completions</code> endpoints are fully compatible. You can point any OpenAI client to <code>http://localhost:3000</code>.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does inference data leave my machine?</summary>
+          <p>Never. All computation happens locally. LLaMA Ultra doesn't phone home or send telemetry. What happens on your machine stays on your machine.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>What's the difference between this and Ollama?</summary>
+          <p>Ollama is great for ease of use. LLaMA Ultra is optimized for constrained hardware. We add intelligent streaming, predictive caching, mixed-precision layers, and hardware-adaptive quantization — features Ollama doesn't have.</p>
+        </details>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ───────────────────────────────────────────────────────────────── -->
+  <section class="cta section">
+    <div class="container">
+      <div class="cta-card">
+        <div class="glow glow--cta"></div>
+        <h2>Ready to run AI anywhere?</h2>
+        <p>Join hundreds of developers running local AI without the GPU tax.</p>
+        <div class="cta-actions">
+          <a href="#pricing" class="btn btn--xl btn--primary">Start for free</a>
+          <a href="https://github.com/dimita/v2-llama-ultra" class="btn btn--xl btn--ghost" target="_blank" rel="noopener">
+            ⭐ Star on GitHub
+          </a>
+        </div>
+        <div class="cta-install">
+          <code>npm install -g v2-llama-ultra</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ────────────────────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">LLaMA<span class="logo-accent">Ultra</span></span>
+        <p class="footer__tagline">Run any AI model on any machine.</p>
+      </div>
+      <div class="footer__links">
+        <div class="footer__col">
+          <div class="footer__col-title">Product</div>
+          <a href="#features">Features</a>
+          <a href="#benchmarks">Benchmarks</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#how-it-works">Architecture</a>
+        </div>
+        <div class="footer__col">
+          <div class="footer__col-title">Developers</div>
+          <a href="#">Documentation</a>
+          <a href="#">SDK Reference</a>
+          <a href="#">API Reference</a>
+          <a href="https://github.com/dimita/v2-llama-ultra" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <div class="footer__col">
+          <div class="footer__col-title">Company</div>
+          <a href="#">About</a>
+          <a href="#">Blog</a>
+          <a href="mailto:enterprise@llama-ultra.dev">Enterprise</a>
+          <a href="#">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer__bottom container">
+      <span>© 2025 LLaMA Ultra. MIT License.</span>
+      <span>Built with ❤️ for the edge.</span>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

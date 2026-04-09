@@ -1,0 +1,45 @@
+{
+  "name": "llama-ultra-desktop",
+  "version": "1.0.0",
+  "description": "LLaMA Ultra Desktop — Run any AI model on any machine",
+  "main": "src/main.js",
+  "scripts": {
+    "start":   "electron .",
+    "dev":     "electron . --dev",
+    "build":   "electron-builder --dir",
+    "dist":    "electron-builder",
+    "dist:mac":   "electron-builder --mac",
+    "dist:win":   "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "node-fetch": "^3.3.2",
+    "systeminformation": "^5.22.7"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.2"
+  },
+  "build": {
+    "appId":       "dev.llama-ultra.desktop",
+    "productName": "LLaMA Ultra",
+    "copyright":   "MIT License",
+    "icon":        "assets/icon",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }]
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    },
+    "files": ["src/**/*", "public/**/*", "assets/**/*"],
+    "extraMetadata": {
+      "main": "src/main.js"
+    }
+  }
+}
