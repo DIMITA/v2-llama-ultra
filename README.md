@@ -961,11 +961,21 @@ All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B
 - [x] `/turns`, `/profile` slash commands in interactive chat
 - [x] `engine.loadedModels` Map — `listLoadedModels()`, `unload(name)` for specific model
 
-### v1.3 (planned)
-- [ ] Whisper audio model support (`llama-ultra transcribe`)
+### v1.3 ✅ (released)
+- [x] **Plugin system** — custom backend plugins in `~/.llama-ultra/plugins/`, `llama-ultra plugins list/new`
+- [x] **`llama-ultra transcribe <file>`** — audio transcription via Ollama whisper, local whisper binary, or OpenAI API
+- [x] **`llama-ultra vision <image> [prompt]`** — multimodal inference (llava, moondream, bakllava…)
+- [x] **Web UI** — full chat interface served at `http://localhost:3000` (model selector, streaming, history, save)
+- [x] **REST API model management** — `POST /v1/models/load`, `POST /v1/models/unload`, `GET /v1/models` (with loaded status)
+- [x] Engine dispatches to plugins when Ollama is unavailable
+
+### v2.0 (planned)
 - [ ] Tauri desktop app (lighter than Electron)
-- [ ] Plugin system for custom backends
 - [ ] Native GGML binding (direct inference without Ollama)
+- [ ] Stable Diffusion image generation (`llama-ultra generate <prompt>`)
+- [ ] Distributed inference (split model across network nodes)
+- [ ] WASM runtime (run in browser)
+- [ ] Fine-tuning support (LoRA adapters)
 
 ### v2.0 (planned)
 - [ ] Stable Diffusion support

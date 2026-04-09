@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLaMA Ultra — Web UI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0d;
+      --surface:  #161616;
+      --border:   #2a2a2a;
+      --text:     #e8e8e8;
+      --muted:    #666;
+      --accent:   #00d4aa;
+      --accent2:  #7c3aed;
+      --user-bg:  #1a2332;
+      --ai-bg:    #161616;
+      --danger:   #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: -0.3px; }
+    header .version { font-size: 11px; color: var(--muted); }
+    header .spacer  { flex: 1; }
+    header .badge {
+      font-size: 11px; padding: 3px 8px; border-radius: 4px;
+      background: var(--border); color: var(--muted);
+    }
+    header .badge.online { background: rgba(0,212,170,.15); color: var(--accent); }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    aside {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-section { padding: 12px; border-bottom: 1px solid var(--border); }
+    .sidebar-section label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: block; margin-bottom: 6px; }
+    select, input[type=range], input[type=number] {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 5px; padding: 6px 8px; font-size: 13px;
+      outline: none;
+    }
+    select:focus, input:focus { border-color: var(--accent); }
+    .range-row { display: flex; align-items: center; gap: 8px; }
+    .range-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .range-val { font-size: 12px; color: var(--accent); min-width: 28px; text-align: right; }
+    .sidebar-btn {
+      width: 100%; padding: 7px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); font-size: 12px; cursor: pointer;
+      transition: border-color .15s, color .15s; text-align: left; margin-top: 4px;
+    }
+    .sidebar-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .sidebar-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+    .model-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .model-item {
+      padding: 7px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; gap: 6px; transition: background .1s;
+      border: 1px solid transparent;
+    }
+    .model-item:hover   { background: var(--border); }
+    .model-item.active  { background: rgba(0,212,170,.12); border-color: rgba(0,212,170,.3); color: var(--accent); }
+    .model-item .dot    { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+    /* ── Chat area ── */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg { display: flex; gap: 12px; margin-bottom: 20px; max-width: 820px; }
+    .msg.user    { flex-direction: row-reverse; margin-left: auto; }
+    .msg .avatar {
+      width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 13px;
+    }
+    .msg.user .avatar   { background: var(--accent2); }
+    .msg.ai   .avatar   { background: rgba(0,212,170,.2); color: var(--accent); }
+    .msg.sys  .avatar   { background: var(--border); }
+    .bubble {
+      padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.6;
+      max-width: 680px; word-break: break-word; white-space: pre-wrap;
+    }
+    .msg.user .bubble { background: var(--user-bg); border: 1px solid #1e3048; }
+    .msg.ai   .bubble { background: var(--ai-bg);   border: 1px solid var(--border); }
+    .msg.sys  .bubble { background: transparent; color: var(--muted); font-size: 12px; font-style: italic; }
+    .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* cursor blink */
+    .cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink .7s step-end infinite; vertical-align: middle; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── Input bar ── */
+    .input-bar {
+      padding: 12px 20px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .input-row { display: flex; gap: 8px; }
+    #prompt {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 10px 14px;
+      font-size: 14px; outline: none; resize: none; height: 44px; max-height: 160px;
+      font-family: inherit; line-height: 1.5; transition: border-color .15s;
+    }
+    #prompt:focus { border-color: var(--accent); }
+    #send-btn {
+      padding: 10px 18px; border-radius: 8px; border: none;
+      background: var(--accent); color: #000; font-weight: 600; font-size: 14px;
+      cursor: pointer; transition: opacity .15s; white-space: nowrap;
+    }
+    #send-btn:disabled { opacity: .4; cursor: default; }
+    #send-btn:not(:disabled):hover { opacity: .85; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* ── Empty state ── */
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; gap: 8px; color: var(--muted);
+    }
+    .empty .icon  { font-size: 36px; }
+    .empty h2     { font-size: 16px; font-weight: 600; color: var(--text); }
+    .empty p      { font-size: 13px; max-width: 320px; text-align: center; line-height: 1.5; }
+    .empty .pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+    .pill {
+      padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px;
+      font-size: 12px; cursor: pointer; transition: border-color .15s;
+    }
+    .pill:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Status bar ── */
+    .statusbar {
+      display: flex; gap: 16px; padding: 4px 20px;
+      border-top: 1px solid var(--border); background: var(--bg);
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+    }
+    .statusbar span { display: flex; align-items: center; gap: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ LLaMA Ultra</h1>
+  <span class="version">v1.3.0</span>
+  <div class="spacer"></div>
+  <span class="badge" id="backend-badge">connecting…</span>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside>
+    <div class="sidebar-section">
+      <label>Model</label>
+      <select id="model-select"><option value="">Loading…</option></select>
+    </div>
+
+    <div class="sidebar-section">
+      <label>Temperature</label>
+      <div class="range-row">
+        <input type="range" id="temperature" min="0" max="2" step="0.05" value="0.7">
+        <span class="range-val" id="temp-val">0.7</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <label>Max tokens</label>
+      <input type="number" id="max-tokens" value="2048" min="64" max="32768" step="64">
+    </div>
+
+    <div class="sidebar-section">
+      <label>System prompt</label>
+      <textarea id="system-prompt" rows="3"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit;outline:none;"
+        placeholder="You are a helpful assistant."></textarea>
+    </div>
+
+    <div class="sidebar-section">
+      <button class="sidebar-btn" id="clear-btn">🗑 Clear conversation</button>
+      <button class="sidebar-btn" id="save-btn">💾 Save as JSON</button>
+      <button class="sidebar-btn danger" id="stop-btn" style="display:none">⏹ Stop generation</button>
+    </div>
+
+    <div class="model-list" id="model-list"></div>
+  </aside>
+
+  <!-- Chat -->
+  <main>
+    <div id="messages">
+      <div class="empty" id="empty-state">
+        <div class="icon">⚡</div>
+        <h2>LLaMA Ultra</h2>
+        <p>Select a model and start chatting. Your conversation history is kept in context.</p>
+        <div class="pills">
+          <span class="pill" onclick="usePrompt(this)">Explain quantum computing</span>
+          <span class="pill" onclick="usePrompt(this)">Write a Python sort function</span>
+          <span class="pill" onclick="usePrompt(this)">Translate to French: Hello world</span>
+          <span class="pill" onclick="usePrompt(this)">What is the capital of France?</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-bar">
+      <div class="input-row">
+        <textarea id="prompt" placeholder="Message…" rows="1"></textarea>
+        <button id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+      <div class="hint">Enter to send · Shift+Enter for newline</div>
+    </div>
+
+    <div class="statusbar">
+      <span id="stat-tokens">0 tokens</span>
+      <span id="stat-tps"></span>
+      <span id="stat-turns">0 turns</span>
+    </div>
+  </main>
+</div>
+
+<script>
+const API = '';  // same origin
+
+let history     = [];
+let abortCtrl   = null;
+let totalTokens = 0;
+let turns       = 0;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  await loadModels();
+  await loadStatus();
+}
+
+async function loadModels() {
+  try {
+    const resp = await fetch(`${API}/v1/models`);
+    const data = await resp.json();
+    const models = data.data ?? [];
+
+    const sel = document.getElementById('model-select');
+    sel.innerHTML = models.length
+      ? models.map(m => `<option value="${m.id}">${m.id}</option>`).join('')
+      : '<option value="">No models found</option>';
+
+    const list = document.getElementById('model-list');
+    list.innerHTML = models.map(m =>
+      `<div class="model-item" onclick="selectModel('${m.id}')">
+         <div class="dot"></div><span>${m.id}</span>
+       </div>`
+    ).join('');
+  } catch (e) {
+    document.getElementById('model-select').innerHTML = '<option>Error loading models</option>';
+  }
+}
+
+async function loadStatus() {
+  try {
+    const resp = await fetch(`${API}/v1/engine/status`);
+    const data = await resp.json();
+    const badge = document.getElementById('backend-badge');
+    const backend = data.backend ?? 'unknown';
+    badge.textContent = backend;
+    badge.className = 'badge ' + (backend === 'ollama' ? 'online' : '');
+  } catch (_) {
+    document.getElementById('backend-badge').textContent = 'offline';
+  }
+}
+
+function selectModel(name) {
+  document.getElementById('model-select').value = name;
+  document.querySelectorAll('.model-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+// ── Messaging ─────────────────────────────────────────────────────────────────
+
+async function sendMessage() {
+  const input = document.getElementById('prompt');
+  const text  = input.value.trim();
+  if (!text || document.getElementById('send-btn').disabled) return;
+
+  const model     = document.getElementById('model-select').value;
+  const system    = document.getElementById('system-prompt').value.trim();
+  const maxTokens = parseInt(document.getElementById('max-tokens').value, 10);
+  const temp      = parseFloat(document.getElementById('temperature').value);
+
+  // Hide empty state
+  document.getElementById('empty-state').style.display = 'none';
+
+  // Add user message
+  history.push({ role: 'user', content: text });
+  appendMsg('user', text);
+  input.value = '';
+  input.style.height = '44px';
+  turns++;
+
+  // Prepare messages
+  const messages = [
+    ...(system ? [{ role: 'system', content: system }] : []),
+    ...history,
+  ];
+
+  // Lock UI
+  setSending(true);
+
+  // AI bubble
+  const { bubble, meta } = appendMsg('ai', '');
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  bubble.appendChild(cursor);
+
+  let reply = '';
+  let t0 = Date.now();
+  abortCtrl = new AbortController();
+
+  try {
+    const resp = await fetch(`${API}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortCtrl.signal,
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: temp, stream: true }),
+    });
+
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+
+    const reader = resp.body.getReader();
+    const dec    = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const lines = dec.decode(value).split('\n');
+      for (const line of lines) {
+        const l = line.trim();
+        if (!l || l === 'data: [DONE]') continue;
+        const raw = l.startsWith('data: ') ? l.slice(6) : l;
+        try {
+          const chunk = JSON.parse(raw);
+          const token = chunk.choices?.[0]?.delta?.content ?? '';
+          if (token) {
+            reply += token;
+            totalTokens++;
+            bubble.textContent = reply;
+            bubble.appendChild(cursor);
+            scrollToBottom();
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      bubble.textContent = '⚠ Error: ' + err.message;
+      bubble.style.color = '#ef4444';
+    }
+  }
+
+  cursor.remove();
+  if (reply) history.push({ role: 'assistant', content: reply });
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  const tps     = reply ? (totalTokens / elapsed).toFixed(1) : '0';
+  meta.textContent = `${turns} turns · ${totalTokens} tokens total · ${tps} t/s`;
+
+  document.getElementById('stat-tokens').textContent = totalTokens + ' tokens';
+  document.getElementById('stat-tps').textContent    = tps + ' t/s';
+  document.getElementById('stat-turns').textContent  = turns + ' turns';
+
+  setSending(false);
+  abortCtrl = null;
+}
+
+function setSending(state) {
+  document.getElementById('send-btn').disabled   = state;
+  document.getElementById('stop-btn').style.display = state ? '' : 'none';
+  document.getElementById('prompt').disabled     = state;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function appendMsg(role, text) {
+  const container = document.getElementById('messages');
+
+  const msg    = document.createElement('div');
+  msg.className = `msg ${role}`;
+
+  const av    = document.createElement('div');
+  av.className = 'avatar';
+  av.textContent = role === 'user' ? '👤' : role === 'ai' ? '⚡' : 'ℹ';
+
+  const col = document.createElement('div');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  col.appendChild(bubble);
+  col.appendChild(meta);
+  msg.appendChild(av);
+  msg.appendChild(col);
+  container.appendChild(msg);
+
+  scrollToBottom();
+  return { bubble, meta };
+}
+
+function scrollToBottom() {
+  const el = document.getElementById('messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+function usePrompt(el) {
+  document.getElementById('prompt').value = el.textContent;
+  document.getElementById('prompt').focus();
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  history = [];
+  totalTokens = 0;
+  turns = 0;
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('empty-state').style.display = '';
+  document.getElementById('messages').appendChild(document.getElementById('empty-state') || (() => {
+    const el = document.createElement('div'); el.id = 'empty-state'; el.className = 'empty'; return el;
+  })());
+  document.getElementById('stat-tokens').textContent = '0 tokens';
+  document.getElementById('stat-tps').textContent    = '';
+  document.getElementById('stat-turns').textContent  = '0 turns';
+});
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  const data = {
+    model:    document.getElementById('model-select').value,
+    savedAt:  new Date().toISOString(),
+    messages: history,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `chat-${Date.now()}.json`;
+  a.click();
+});
+
+document.getElementById('stop-btn').addEventListener('click', () => {
+  abortCtrl?.abort();
+  setSending(false);
+});
+
+// Temperature slider
+document.getElementById('temperature').addEventListener('input', e => {
+  document.getElementById('temp-val').textContent = parseFloat(e.target.value).toFixed(2);
+});
+
+// Auto-resize textarea
+document.getElementById('prompt').addEventListener('input', function() {
+  this.style.height = '44px';
+  this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+});
+
+// Enter to send
+document.getElementById('prompt').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+setInterval(loadStatus, 15000);
+</script>
+</body>
+</html>

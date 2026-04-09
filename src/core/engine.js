@@ -15,6 +15,7 @@ const { ModelChunker }    = require('./chunking');
 const { PredictiveCache, KVCache } = require('./cache');
 const { TokenStreamer }   = require('./streaming');
 const ollamaBackend       = require('./backends/ollama');
+const { PluginManager }   = require('./plugins');
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ class UltraEngine extends EventEmitter {
     this.kvCache      = new KVCache();
     /** @type {Map<string, object>} key = nameOrPath used at load time */
     this.loadedModels = new Map();
+    this.plugins      = new PluginManager();
     this._ready       = false;
   }
 
@@ -60,9 +62,16 @@ class UltraEngine extends EventEmitter {
   async init() {
     this.hardware = await detectHardware();
 
+    // Load user plugins
+    await this.plugins.loadAll();
+
     // Auto-detect available inference backends
     this._ollamaAvailable = await ollamaBackend.isOllamaRunning();
-    this._backend = this._ollamaAvailable ? 'ollama' : 'mock';
+    const pluginBackend   = this.plugins.firstAvailable();
+
+    if (this._ollamaAvailable)  this._backend = 'ollama';
+    else if (pluginBackend)     this._backend = `plugin:${pluginBackend.name}`;
+    else                        this._backend = 'mock';
 
     this.emit('engine:init', { hardware: this.hardware, backend: this._backend });
     this._ready = true;
@@ -217,6 +226,8 @@ class UltraEngine extends EventEmitter {
     try {
       if (this._backend === 'ollama') {
         await this._runOllama(promptOrMessages, opts, streamer, model);
+      } else if (this._backend.startsWith('plugin:')) {
+        await this._runPlugin(promptOrMessages, opts, streamer);
       } else {
         await this._runMock(promptOrMessages, opts, streamer, model);
       }
@@ -224,6 +235,27 @@ class UltraEngine extends EventEmitter {
       streamer.destroy(err);
       this.emit('inference:error', err);
     }
+  }
+
+  async _runPlugin(promptOrMessages, opts, streamer) {
+    const pluginName = this._backend.replace('plugin:', '');
+    const plugin     = this.plugins.get(pluginName) ?? this.plugins.firstAvailable();
+    if (!plugin) throw new Error('No plugin available');
+
+    const messages = Array.isArray(promptOrMessages)
+      ? promptOrMessages
+      : [{ role: 'user', content: promptOrMessages }];
+
+    const start = Date.now();
+    const { totalTokens, tps } = await plugin.infer(messages, opts, streamer);
+    const elapsed = Date.now() - start;
+
+    this.emit('inference:done', {
+      totalTokens,
+      tps: tps || (totalTokens / (elapsed / 1000)),
+      backend: `plugin:${plugin.name}`,
+    });
+    streamer.end();
   }
 
   // ─── Ollama backend (real inference) ────────────────────────────────────

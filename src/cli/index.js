@@ -29,6 +29,9 @@ require('./commands/models')(program);
 require('./commands/bench')(program);
 require('./commands/rm')(program);
 require('./commands/profiles')(program);
+require('./commands/plugins')(program);
+require('./commands/transcribe')(program);
+require('./commands/vision')(program);
 
 // Global error handler
 program.exitOverride();

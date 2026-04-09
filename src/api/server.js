@@ -7,10 +7,12 @@ const cors        = require('cors');
 const helmet      = require('helmet');
 const rateLimit   = require('express-rate-limit');
 const chalk       = require('chalk');
+const path        = require('path');
 const { isPricingEnabled } = require('../pricing');
 
 const inferenceRouter = require('./routes/inference');
 const billingRouter   = require('./routes/billing');
+const modelsRouter    = require('./routes/models');
 
 const app  = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -18,7 +20,16 @@ const HOST = process.env.HOST ?? 'localhost';
 
 // ─── Security middleware ──────────────────────────────────────────────────────
 
-app.use(helmet());
+// Relax CSP for the built-in Web UI (inline scripts)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
 app.use(cors({
   origin:  process.env.ALLOWED_ORIGINS?.split(',') ?? '*',
   methods: ['GET', 'POST', 'DELETE'],
@@ -48,9 +59,15 @@ app.get('/health', (_req, res) => res.json({
   ts:      new Date().toISOString(),
 }));
 
+// ─── Web UI ───────────────────────────────────────────────────────────────────
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use('/v1',      inferenceRouter);
+app.use('/v1',      modelsRouter);
 app.use('/billing', billingRouter);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
@@ -70,7 +87,8 @@ app.listen(PORT, HOST, () => {
   console.log(chalk.bold.cyan(`\n  LLaMA Ultra API  `) + chalk.dim(`v${require('../../package.json').version}`));
   console.log(chalk.dim(`  http://${HOST}:${PORT}`));
   console.log(`  Pricing: ${isPricingEnabled() ? chalk.green('enabled') : chalk.yellow('disabled (open mode)')}`);
-  console.log(chalk.dim(`  Routes: /v1/completions  /v1/chat/completions  /v1/models  /billing/plans\n`));
+  console.log(chalk.dim(`  Web UI   : http://${HOST}:${PORT}/`));
+  console.log(chalk.dim(`  Routes   : /v1/chat/completions  /v1/models  /v1/models/load  /v1/engine/status\n`));
 });
 
 module.exports = app;
