@@ -14,6 +14,7 @@ const { selectQuantizationLevel, mixedPrecisionStrategy, estimateCompressedSizeG
 const { ModelChunker }    = require('./chunking');
 const { PredictiveCache, KVCache } = require('./cache');
 const { TokenStreamer }   = require('./streaming');
+const ollamaBackend       = require('./backends/ollama');
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
@@ -51,16 +52,25 @@ class UltraEngine extends EventEmitter {
 
   async init() {
     this.hardware = await detectHardware();
-    this.emit('engine:init', { hardware: this.hardware });
+
+    // Auto-detect available inference backends
+    this._ollamaAvailable = await ollamaBackend.isOllamaRunning();
+    this._backend = this._ollamaAvailable ? 'ollama' : 'mock';
+
+    this.emit('engine:init', { hardware: this.hardware, backend: this._backend });
     this._ready = true;
     return this;
   }
 
   initSync() {
     this.hardware = detectHardwareSync();
+    this._ollamaAvailable = false;
+    this._backend = 'mock';
     this._ready = true;
     return this;
   }
+
+  get backend() { return this._backend; }
 
   // ─── Load model ───────────────────────────────────────────────────────────
 
@@ -111,8 +121,18 @@ class UltraEngine extends EventEmitter {
     // Mixed precision strategy
     const precisionMap = mixedPrecisionStrategy(numLayers, freeRamGb, sizeFp32Gb);
 
+    // Try to find the Ollama model name from the registry entry
+    let ollamaName = null;
+    try {
+      const { ModelRegistry } = require('../migrate/index');
+      const reg = new ModelRegistry(this.modelsDir);
+      const entry = reg.list().find(m => m.path === modelPath || m.originalPath === modelPath);
+      if (entry?.source === 'ollama') ollamaName = entry.fullName;
+    } catch (_) {}
+
     this.loadedModel = {
       path:         modelPath,
+      ollamaName,
       chunker,
       numLayers,
       quantization: level,
@@ -146,75 +166,54 @@ class UltraEngine extends EventEmitter {
   }
 
   async _runInference(prompt, opts, streamer) {
-    const { chunker, numLayers, precisionMap } = this.loadedModel;
-    const maxTokens    = opts.maxTokens ?? 512;
-    const layersPerChunk = Math.ceil(numLayers / Math.max(chunker.chunks.length, 1));
-
     try {
-      let lastChunkId = -1;
-
-      // Process layers one chunk at a time — load → use → unload
-      for (let layer = 0; layer < numLayers; layer++) {
-        const chunkId  = Math.floor(layer / layersPerChunk);
-        const cacheKey = `chunk:${chunkId}`;
-
-        // Load new chunk if we moved to the next one
-        if (chunkId !== lastChunkId) {
-          // Evict previous chunk immediately — no need to keep it
-          if (lastChunkId >= 0) {
-            this.cache.delete(`chunk:${lastChunkId}`);
-            chunker.unloadChunk(lastChunkId);
-          }
-
-          // Load current chunk (only if not already prefetched)
-          if (!this.cache.has(cacheKey)) {
-            const buf    = await chunker.loadChunk(chunkId);
-            const sizeMb = buf.length / (1024 * 1024);
-            this.cache.set(cacheKey, buf, sizeMb);
-          }
-
-          // Prefetch ONLY the next chunk (window = 1)
-          const nextId = chunkId + 1;
-          if (nextId < chunker.chunks.length && !this.cache.has(`chunk:${nextId}`)) {
-            // Non-blocking prefetch in background
-            setImmediate(async () => {
-              try {
-                const buf = await chunker.loadChunk(nextId);
-                this.cache.set(`chunk:${nextId}`, buf, buf.length / (1024 * 1024));
-              } catch (_) {}
-            });
-          }
-
-          lastChunkId = chunkId;
-          this.emit('inference:chunk', {
-            chunkId,
-            ramMb: Math.round(this.cache.usedMb),
-            maxMb: this.cache.maxSizeMb,
-          });
-        }
-
-        this.emit('inference:layer', { layer, precision: precisionMap[layer]?.quantization });
-        await _tick();
+      if (this._backend === 'ollama') {
+        await this._runOllama(prompt, opts, streamer);
+      } else {
+        await this._runMock(prompt, opts, streamer);
       }
-
-      // Free last chunk after forward pass
-      if (lastChunkId >= 0) {
-        this.cache.delete(`chunk:${lastChunkId}`);
-        chunker.unloadChunk(lastChunkId);
-      }
-
-      // Stream tokens
-      const tokens = this._mockTokenize(prompt, maxTokens);
-      for (const token of tokens) {
-        streamer.write(token);
-        await _tick();
-      }
-
-      streamer.end();
     } catch (err) {
       streamer.destroy(err);
       this.emit('inference:error', err);
     }
+  }
+
+  // ─── Ollama backend (real inference) ────────────────────────────────────
+
+  async _runOllama(prompt, opts, streamer) {
+    const modelName = this.loadedModel.ollamaName ?? this.loadedModel.path;
+    const messages  = [
+      ...(opts.system ? [{ role: 'system', content: opts.system }] : []),
+      { role: 'user', content: prompt },
+    ];
+
+    const { totalTokens, evalDuration } = await ollamaBackend.streamChat({
+      model:    modelName,
+      messages,
+      options:  { maxTokens: opts.maxTokens ?? 2048, temperature: opts.temperature },
+      onToken:  token => streamer.write(token),
+      signal:   opts.signal,
+    });
+
+    const tps = evalDuration > 0
+      ? +( totalTokens / (evalDuration / 1e9) ).toFixed(1)
+      : 0;
+
+    this.emit('inference:done', { totalTokens, tps, backend: 'ollama' });
+    streamer.end();
+  }
+
+  // ─── Mock backend (fallback — no Ollama) ────────────────────────────────
+
+  async _runMock(prompt, opts, streamer) {
+    const maxTokens = opts.maxTokens ?? 512;
+    const tokens    = this._mockTokenize(prompt, maxTokens);
+    for (const token of tokens) {
+      streamer.write(token);
+      await _tick();
+    }
+    this.emit('inference:done', { totalTokens: tokens.length, tps: 0, backend: 'mock' });
+    streamer.end();
   }
 
   // ─── Unload ───────────────────────────────────────────────────────────────

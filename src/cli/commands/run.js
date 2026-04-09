@@ -40,6 +40,9 @@ module.exports = function registerRun(program) {
         chalk.dim(`  Hardware : ${hw.cpu.cores} cores · ${hw.ram.freeGb.toFixed(1)} GB free · profile: ${hw.profile.name}`)
       );
       console.log(
+        chalk.dim(`  Backend  : `) + (engine.backend === 'ollama' ? chalk.green('ollama') : chalk.yellow('mock'))
+      );
+      console.log(
         chalk.dim(`  Model    : ${loaded.quantization.toUpperCase()} · `) +
         chalk.green(`${loaded.compressedSizeGb.toFixed(1)} GB`) +
         chalk.dim(` compressed`)
@@ -74,6 +77,10 @@ module.exports = function registerRun(program) {
 
         process.stdout.write(chalk.yellow('AI  > '));
 
+        let inferDone = null;
+        const inferDoneHandler = (stats) => { inferDone = stats; };
+        engine.once('inference:done', inferDoneHandler);
+
         const stream = engine.infer(prompt, {
           maxTokens: parseInt(opts.maxTokens, 10),
           speed:     parseFloat(opts.speed),
@@ -82,11 +89,16 @@ module.exports = function registerRun(program) {
 
         stream.on('data', chunk => process.stdout.write(chunk));
         stream.on('stream:done', ({ tokenCount, elapsed }) => {
-          const tps = (tokenCount / (elapsed / 1000)).toFixed(1);
-          process.stdout.write(chalk.dim(`\n  [${tokenCount} tokens · ${tps} t/s]\n\n`));
+          engine.removeListener('inference:done', inferDoneHandler);
+          const tps = inferDone?.tps > 0
+            ? inferDone.tps
+            : (tokenCount / (elapsed / 1000)).toFixed(1);
+          const backendLabel = inferDone?.backend ?? engine.backend;
+          process.stdout.write(chalk.dim(`\n  [${tokenCount} tokens · ${tps} t/s · ${backendLabel}]\n\n`));
           rl.prompt();
         });
         stream.on('error', err => {
+          engine.removeListener('inference:done', inferDoneHandler);
           console.error(chalk.red('\nError: ' + err.message));
           rl.prompt();
         });
