@@ -31,24 +31,23 @@ module.exports = function registerRun(program) {
         process.exit(1);
       }
 
-      const hw      = engine.hardware;
-      const model   = engine.loadedModel;
-      const chunkMb = hw.profile.chunkSizeMb;
-      const totalChunks = model.chunker?.chunks?.length ?? '?';
+      const hw       = engine.hardware;
+      const loaded   = engine.loadedModel;
+      const chunkMb  = hw.profile.chunkSizeMb;
+      const totalChunks = loaded.chunker?.chunks?.length ?? '?';
 
       console.log(
         chalk.dim(`  Hardware : ${hw.cpu.cores} cores · ${hw.ram.freeGb.toFixed(1)} GB free · profile: ${hw.profile.name}`)
       );
       console.log(
-        chalk.dim(`  Model    : ${model.quantization.toUpperCase()} · `) +
-        chalk.green(`${model.compressedSizeGb.toFixed(1)} GB`) +
-        chalk.dim(` in RAM (was ${(model.compressedSizeGb * 4 / (model.quantization === 'int4' ? 1 : model.quantization === 'int8' ? 2 : 4)).toFixed(1)} GB FP32)`)
+        chalk.dim(`  Model    : ${loaded.quantization.toUpperCase()} · `) +
+        chalk.green(`${loaded.compressedSizeGb.toFixed(1)} GB`) +
+        chalk.dim(` compressed`)
       );
       console.log(
-        chalk.dim(`  Chunking : ${totalChunks} chunks × ${chunkMb} MB — only 1 chunk in RAM at a time\n`)
+        chalk.dim(`  Chunking : ${totalChunks} chunks × ${chunkMb} MB — 1 chunk in RAM at a time\n`)
       );
 
-      // Show RAM usage live during inference
       engine.on('inference:chunk', ({ chunkId, ramMb, maxMb }) => {
         process.stdout.write(
           chalk.dim(`\r  [chunk ${chunkId + 1}/${totalChunks} · RAM ${ramMb} MB / ${maxMb} MB]  `)
