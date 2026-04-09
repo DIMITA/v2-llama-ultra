@@ -24,7 +24,7 @@ Adaptive quantization · Intelligent streaming · Predictive caching · Zero GPU
 11. [Configuration](#11-configuration)
 12. [Benchmarks](#12-benchmarks)
 13. [Roadmap](#13-roadmap)
-13. [Contributing](#13-contributing)
+14. [Contributing](#14-contributing)
 
 ---
 
@@ -109,6 +109,9 @@ LLaMA Ultra is **not** a new model. It is the engine that should have existed �
 | `src/core/cache.js` | Predictive LRU cache + KV-cache for inference |
 | `src/core/streaming.js` | Token streaming (SSE, JSON, text) with back-pressure |
 | `src/core/engine.js` | Orchestrator — wires all modules together |
+| `src/core/backends/ollama.js` | Real inference via Ollama HTTP API (`/api/chat`, streaming) |
+| `src/migrate/ollama.js` | Parse Ollama manifests, detect blobs across all install paths |
+| `src/migrate/llamacpp.js` | Scan llama.cpp / LM Studio / Jan / GPT4All directories |
 | `src/sdk/index.js` | Node.js SDK with OpenAI-compatible interface |
 | `src/api/server.js` | Express HTTP server, OpenAI-compatible endpoints |
 | `src/pricing/index.js` | Pricing guard + Stripe integration + kill-switch |
@@ -137,6 +140,24 @@ npm install v2-llama-ultra
 ```
 
 ### Run in 30 seconds
+
+**With Ollama (recommended — real inference):**
+
+```bash
+# Pull a model via Ollama
+llama-ultra pull deepseek-coder-v2:latest
+
+# Start a multi-turn chat session
+llama-ultra run deepseek-coder-v2:latest
+
+# List all your models (Ollama + migrated)
+llama-ultra models
+
+# Benchmark a model (real t/s)
+llama-ultra bench deepseek-coder-v2:latest
+```
+
+**With a local GGUF file:**
 
 ```bash
 # 1. Check your hardware profile
@@ -254,9 +275,13 @@ llama-ultra <command> [options]
 
 Commands:
   status                      Show hardware profile & engine status
-  optimize <model>            Pre-chunk and quantize a model
-  run <model>                 Interactive chat session
+  models                      List all available models
+  pull <model>                Download a model from Ollama registry
+  run <model>                 Interactive multi-turn chat session
+  bench <model>               Benchmark a model (real t/s measurement)
   load <model>                Load a model (without chat)
+  optimize <model>            Pre-chunk and quantize a model
+  migrate                     Import models from Ollama / llama.cpp / etc.
   serve                       Start HTTP API server
   config <subcommand>         Manage configuration
 
@@ -283,6 +308,137 @@ Options:
   - Chunk size   : 256 MB
 ```
 
+### `llama-ultra models`
+
+Lists all available models from Ollama and the local registry:
+
+```bash
+llama-ultra models              # full table
+llama-ultra models --ollama-only
+llama-ultra models --local-only
+llama-ultra models --json       # raw JSON
+```
+
+```
+  LLaMA Ultra › models
+
+  NAME                          SIZE       QUANT    SOURCE
+  ──────────────────────────────────────────────────────────
+  deepseek-coder-v2:latest      8.90 GB    unknown  ollama
+  qwen3-coder:30b               18.00 GB   unknown  ollama
+  gpt-oss:20b                   13.00 GB   unknown  ollama
+
+  Total: 3 model(s)
+```
+
+### `llama-ultra pull <model>`
+
+Downloads a model directly from the Ollama registry with a live progress bar:
+
+```bash
+llama-ultra pull llama3:8b
+llama-ultra pull deepseek-coder-v2:latest
+llama-ultra pull qwen3-coder:30b --host http://localhost:11434
+```
+
+```
+  Pulling deepseek-coder-v2:latest via Ollama…
+
+  pulling manifest
+  pulling layer          ██████████████████░░░░  82%  7324/8924 MB
+  verifying sha256 digest
+  writing manifest
+
+  Model "deepseek-coder-v2:latest" pulled successfully.
+  Run it with: llama-ultra run deepseek-coder-v2:latest
+```
+
+### `llama-ultra run <model>`
+
+Multi-turn interactive chat. The full conversation history is sent to the model on each turn.
+
+```bash
+llama-ultra run deepseek-coder-v2:latest
+llama-ultra run llama3:8b \
+  --temperature 0.3 \
+  --top-p 0.95 \
+  --max-tokens 4096 \
+  --system "You are a senior software engineer."
+```
+
+```
+  Ultra LLaMA Engine  v2
+  Loading deepseek-coder-v2:latest…
+
+  Hardware : 8 cores · 6.4 GB free · profile: medium
+  Backend  : ollama
+  Model    : UNKNOWN · 8.90 GB compressed
+  Chunking : ? chunks × 256 MB
+
+  Type /help for commands.
+
+You > Explain the difference between TCP and UDP
+AI  > TCP (Transmission Control Protocol) provides…
+  [342 tok · 45.2 t/s · ollama · turn 1]
+
+You > /temp 0.8
+  Temperature set to 0.8
+
+You > /save chat-2024.json
+  Saved to /home/user/chat-2024.json
+```
+
+**Slash commands available inside the chat:**
+
+| Command | Description |
+|---------|-------------|
+| `/clear` | Clear conversation history |
+| `/history` | Show all previous exchanges |
+| `/save [file]` | Save conversation to JSON |
+| `/model` | Show loaded model details |
+| `/status` | Show engine status (hardware, cache) |
+| `/temp <n>` | Set temperature (0–2) live |
+| `/tokens <n>` | Set max tokens for next responses |
+| `/system <text>` | Change system prompt (`/system off` to clear) |
+| `/help` | List all commands |
+| `/exit` or `/quit` | Exit |
+
+### `llama-ultra bench <model>`
+
+Runs N inference passes and reports real performance metrics:
+
+```bash
+llama-ultra bench deepseek-coder-v2:latest
+llama-ultra bench llama3:8b --runs 5 --max-tokens 256 --warmup
+```
+
+```
+  LLaMA Ultra › bench
+  Model   : deepseek-coder-v2:latest
+  Runs    : 3 × 128 max tokens
+
+  Backend : ollama
+  Profile : medium · 6.4 GB free
+  Cold start: 342 ms
+
+  Run 1/3… ████████░░  45.2 t/s · 128 tok · 2831 ms
+  Run 2/3… █████████░  47.1 t/s · 128 tok · 2716 ms
+  Run 3/3… ████████░░  44.8 t/s · 128 tok · 2857 ms
+
+  ─── Results ───────────────────────────────
+  Avg t/s        : 45.7
+  Min / Max t/s  : 44.8 / 47.1
+  Avg latency    : 2801 ms/run
+  Total tokens   : 384
+  Cold start     : 342 ms
+  RAM delta      : +124 MB
+  Model size     : 8.90 GB (UNKNOWN)
+  Backend        : ollama
+  Profile        : medium
+
+  Grade : A  — Very fast (≥ 30 t/s)
+```
+
 ### `llama-ultra optimize <model>`
 
 ```bash
@@ -291,16 +447,6 @@ llama-ultra optimize llama-3-70b.gguf \
   --layers 80 \
   --chunk-size 256 \
   --dry-run          # preview without writing
-```
-
-### `llama-ultra run <model>`
-
-```bash
-llama-ultra run llama-3-7b.gguf \
-  --quantization auto \   # auto | int4 | int8 | fp16
-  --max-tokens 1024 \
-  --system "You are a helpful assistant." \
-  --speed 0               # tokens/sec target (0=unlimited)
 ```
 
 ### `llama-ultra serve`
@@ -651,28 +797,39 @@ All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B
 
 ## 13. Roadmap
 
-### v1.0 (current)
-- [x] Core engine: chunking, quantization, streaming, cache
-- [x] CLI (status, optimize, run, serve, config)
+### v1.0 ✅ (released)
+- [x] Core engine: chunking, quantization, streaming, predictive LRU cache
+- [x] CLI (status, optimize, run, load, serve, config, migrate)
 - [x] Node.js SDK with OpenAI-compatible interface
-- [x] REST API server (OpenAI-compatible)
-- [x] Electron desktop app
-- [x] Pricing system with kill-switch
+- [x] REST API server (OpenAI-compatible endpoints)
+- [x] Electron desktop app (chat, models, optimize, API server, settings)
+- [x] Pricing system (Free/Pro/Team/Enterprise) with kill-switch
+- [x] Model migration from Ollama, llama.cpp, LM Studio, Jan, GPT4All, LocalAI
 - [x] Landing page
 
-### v1.1
-- [ ] Native GGML binding (replace JS mock tokenizer)
+### v1.1 ✅ (released)
+- [x] Real inference via **Ollama HTTP backend** (replaces JS mock tokenizer)
+  - `POST /api/chat` with `stream: true`, ndjson parsing, real t/s from `eval_duration`
+  - Auto-detection at startup (`isOllamaRunning`), graceful fallback to mock
+- [x] **Multi-turn conversation** in `run` — full `messages[]` history sent to model each turn
+- [x] **Slash commands** in interactive chat: `/clear`, `/history`, `/save`, `/model`, `/temp`, `/tokens`, `/system`, `/help`
+- [x] **`--temperature`** and **`--top-p`** flags on `run` command
+- [x] **`llama-ultra pull <model>`** — download models from Ollama registry with live progress bar
+- [x] **`llama-ultra models`** — table of all Ollama + registry models (with `--json`, `--ollama-only`, `--local-only`)
+- [x] **`llama-ultra bench <model>`** — N-run benchmark: avg/min/max t/s, cold-start, RAM delta, grade S/A/B/C/D/F
+- [x] Ollama scanner extended to all Linux install paths (systemd, snap, user install)
+- [x] `migrate --diagnose`, `--ollama-dir`, `--dry-run`, `--all` flags
+
+### v1.2 (planned)
 - [ ] Python SDK
 - [ ] Whisper audio model support
-- [ ] Model Hub (browse & download popular models)
-
-### v1.2
-- [ ] Stable Diffusion support
 - [ ] Multi-model serving (load several models, route by task)
 - [ ] Tauri desktop app (lighter than Electron)
 - [ ] Plugin system for custom quantizers
+- [ ] Native GGML binding (direct inference without Ollama)
 
-### v2.0
+### v2.0 (planned)
+- [ ] Stable Diffusion support
 - [ ] Distributed inference (split model across network nodes)
 - [ ] WASM runtime (run in browser)
 - [ ] Fine-tuning support (LoRA adapters)
