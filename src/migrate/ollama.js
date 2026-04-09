@@ -23,12 +23,40 @@ const { EventEmitter } = require('events');
 
 // ─── Default Ollama paths per platform ───────────────────────────────────────
 
-function ollamaRoot() {
+// All candidate locations where Ollama might store its models
+function ollamaCandidates() {
+  // 1. Explicit env var always wins
+  if (process.env.OLLAMA_MODELS) return [process.env.OLLAMA_MODELS];
+
+  const home = os.homedir();
+
   switch (process.platform) {
-    case 'darwin':  return path.join(os.homedir(), '.ollama', 'models');
-    case 'win32':   return path.join(os.homedir(), 'AppData', 'Local', 'ollama', 'models');
-    default:        return path.join(os.homedir(), '.ollama', 'models');
+    case 'darwin':
+      return [
+        path.join(home, '.ollama', 'models'),
+      ];
+    case 'win32':
+      return [
+        path.join(home, 'AppData', 'Local', 'ollama', 'models'),
+        path.join(home, '.ollama', 'models'),
+      ];
+    default: // Linux — several install methods
+      return [
+        path.join(home, '.ollama', 'models'),             // user install / ollama run
+        '/usr/share/ollama/.ollama/models',               // systemd service (deb/rpm)
+        '/var/lib/ollama/models',                         // alternative service path
+        path.join(home, 'snap', 'ollama', 'current', '.ollama', 'models'), // snap
+      ];
   }
+}
+
+// Return the first candidate that actually exists
+function ollamaRoot() {
+  for (const candidate of ollamaCandidates()) {
+    if (fs.existsSync(path.join(candidate, 'blobs'))) return candidate;
+  }
+  // Fall back to default even if not present (isInstalled() will return false)
+  return ollamaCandidates()[0];
 }
 
 // ─── Scanner ─────────────────────────────────────────────────────────────────
@@ -36,21 +64,42 @@ function ollamaRoot() {
 class OllamaScanner extends EventEmitter {
   constructor(root = null) {
     super();
-    this.root      = root ?? ollamaRoot();
-    this.blobsDir  = path.join(this.root, 'blobs');
+    // If a specific root is given use it, otherwise scan all candidates
+    this._fixedRoot = root;
+    this.root         = root ?? ollamaRoot();
+    this.blobsDir     = path.join(this.root, 'blobs');
     this.manifestsDir = path.join(this.root, 'manifests');
   }
 
   // ─── Detect if Ollama is installed ─────────────────────────────────────
 
   isInstalled() {
-    return fs.existsSync(this.root) && fs.existsSync(this.blobsDir);
+    // Check all candidate paths, not just the first one
+    return ollamaCandidates().some(c => fs.existsSync(path.join(c, 'blobs')));
   }
 
   // ─── Scan all manifests ─────────────────────────────────────────────────
 
   scan() {
-    if (!this.isInstalled()) return [];
+    // Scan every candidate that exists
+    const roots = this._fixedRoot
+      ? [this._fixedRoot]
+      : ollamaCandidates().filter(c => fs.existsSync(path.join(c, 'blobs')));
+
+    if (roots.length === 0) return [];
+
+    const all = [];
+    for (const root of roots) {
+      this.root         = root;
+      this.blobsDir     = path.join(root, 'blobs');
+      this.manifestsDir = path.join(root, 'manifests');
+      all.push(...this._scanRoot());
+    }
+    return all;
+  }
+
+  _scanRoot() {
+    if (!fs.existsSync(this.manifestsDir)) return [];
 
     const results = [];
 
@@ -146,4 +195,4 @@ function inferQuantFromName(name) {
   return 'unknown';
 }
 
-module.exports = { OllamaScanner, ollamaRoot };
+module.exports = { OllamaScanner, ollamaRoot, ollamaCandidates };

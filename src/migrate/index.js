@@ -85,6 +85,7 @@ class Migrator extends EventEmitter {
     this.mode         = opts.mode ?? 'link';
     this.optimize     = opts.optimize ?? false;
     this.extraDirs    = opts.extraScanDirs ?? [];
+    this.ollamaDir    = opts.ollamaDir ?? null;   // override Ollama root
     this.registry     = new ModelRegistry(this.modelsDir);
   }
 
@@ -93,7 +94,7 @@ class Migrator extends EventEmitter {
   async scan() {
     this.emit('scan:start');
 
-    const ollama  = new OllamaScanner();
+    const ollama  = new OllamaScanner(this.ollamaDir);
     const llamaCpp = new LlamaCppScanner({ extraDirs: this.extraDirs });
 
     const ollamaModels   = ollama.isInstalled() ? ollama.scan() : [];

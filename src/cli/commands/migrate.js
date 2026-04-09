@@ -29,16 +29,47 @@ module.exports = function registerMigrate(program) {
     .option('--source <src>',         'Filter by source: ollama | llamacpp | lmstudio | jan | gpt4all')
     .option('--mode <mode>',          'Transfer mode: copy | link | symlink | move | inplace', 'link')
     .option('--scan-dir <dir>',       'Extra directory to scan for .gguf files')
+    .option('--ollama-dir <dir>',     'Override Ollama models directory (e.g. /usr/share/ollama/.ollama/models)')
     .option('--models-dir <dir>',     'Override destination models directory')
     .option('--list',                 'List already-migrated models and exit')
     .option('--dry-run',              'Show what would happen without making any changes')
+    .option('--diagnose',             'Show all paths being scanned and exit')
     .action(async (opts) => {
       const cfg = loadConfig();
+
+      // ── Diagnose: show all scanned paths ─────────────────────────────────
+      if (opts.diagnose) {
+        const { ollamaCandidates } = require('../../migrate/ollama');
+        const { KNOWN_DIRS }       = require('../../migrate/llamacpp');
+        const fs = require('fs');
+
+        console.log(chalk.bold.cyan('\n  Diagnosed scan paths\n'));
+
+        console.log(chalk.bold('  Ollama candidates:'));
+        for (const p of ollamaCandidates()) {
+          const blobsExist = fs.existsSync(require('path').join(p, 'blobs'));
+          console.log(`    ${blobsExist ? chalk.green('✓') : chalk.red('✗')}  ${p}`);
+        }
+
+        console.log(chalk.bold('\n  GGUF / llama.cpp dirs:'));
+        const extraDirs = opts.scanDir ? [opts.scanDir] : [];
+        for (const p of [...KNOWN_DIRS, ...extraDirs]) {
+          const exists = fs.existsSync(p);
+          console.log(`    ${exists ? chalk.green('✓') : chalk.dim('–')}  ${p}`);
+        }
+
+        const envVar = process.env.OLLAMA_MODELS;
+        if (envVar) console.log(chalk.cyan(`\n  OLLAMA_MODELS env = ${envVar}`));
+        else console.log(chalk.dim('\n  OLLAMA_MODELS env not set'));
+        console.log(chalk.dim('\n  Tip: set OLLAMA_MODELS=/path/to/ollama/models to override\n'));
+        return;
+      }
 
       const migrator = new Migrator({
         modelsDir:      opts.modelsDir ?? cfg.modelsDir,
         mode:           opts.mode,
         extraScanDirs:  opts.scanDir ? [opts.scanDir] : [],
+        ollamaDir:      opts.ollamaDir ?? null,
       });
 
       // ── List migrated ────────────────────────────────────────────────────
