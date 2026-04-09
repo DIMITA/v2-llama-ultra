@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('llamaUltra', {
     return () => ipcRenderer.removeListener(channel, sub);
   },
 
+  // ── Migration ──────────────────────────────────────────────────────────
+  migrate: {
+    scan: (extraDirs)       => ipcRenderer.invoke('migrate:scan', extraDirs ?? []),
+    run:  (models, mode)    => ipcRenderer.invoke('migrate:run',  models, mode),
+  },
+
   // ── Platform info ──────────────────────────────────────────────────────
   platform: process.platform,
   version:  process.env.npm_package_version ?? '1.0.0',

@@ -287,6 +287,134 @@ App.optimize = {
   },
 };
 
+// ─── Migrate ──────────────────────────────────────────────────────────────────
+
+const SOURCE_ICONS = { ollama:'🦙', llamacpp:'⚙️', lmstudio:'🖥️', jan:'🤖', gpt4all:'🌐', localai:'🔧', generic:'📦' };
+const MODE_DESCS = {
+  link:     'Hard-link: instant, zero extra disk space (same filesystem)',
+  symlink:  'Symlink: cross-filesystem, instant, no copy',
+  inplace:  'In-place: register original path — zero disk cost',
+  copy:     'Copy: safe duplicate — uses extra disk space',
+  move:     'Move: delete from source after import',
+};
+
+App.migrate = {
+  _models: [],
+  _selected: new Set(),
+
+  updateModeDesc() {
+    const mode = document.getElementById('migrateMode')?.value ?? 'link';
+    const el   = document.getElementById('migrateModeDesc');
+    if (el) el.textContent = MODE_DESCS[mode] ?? '';
+  },
+
+  async browse() {
+    if (!api) return;
+    const dir = await api.dialog.openDir();
+    if (dir) { this._extraDir = dir; notify(`Will scan: ${dir}`); }
+  },
+
+  async scan() {
+    const empty   = document.getElementById('migrateEmpty');
+    const results = document.getElementById('migrateResults');
+    const list    = document.getElementById('migrateModelList');
+
+    empty.style.display   = 'none';
+    results.style.display = 'none';
+    list.innerHTML        = '<div style="color:var(--dim);padding:12px">Scanning…</div>';
+    results.style.display = 'block';
+
+    // Simulate scan (in production, this calls the main process via IPC)
+    await new Promise(r => setTimeout(r, 800));
+
+    // Demo data — in production, returned from ipcRenderer.invoke('migrate:scan')
+    const found = [
+      { id: 'ollama::llama3:8b',          source: 'ollama',   displayName: 'llama3:8b',                  sizeGb: 4.7,  quantization: 'int4',    available: true,  alreadyMigrated: false },
+      { id: 'ollama::mistral:7b',          source: 'ollama',   displayName: 'mistral:7b',                 sizeGb: 4.1,  quantization: 'int4',    available: true,  alreadyMigrated: false },
+      { id: 'llamacpp::phi-3-mini.gguf',   source: 'llamacpp', displayName: 'phi-3-mini',                 sizeGb: 2.2,  quantization: 'int4',    available: true,  alreadyMigrated: false },
+      { id: 'lmstudio::codellama-13b.gguf',source: 'lmstudio', displayName: 'codellama-13b',              sizeGb: 7.4,  quantization: 'int8',    available: true,  alreadyMigrated: true  },
+    ];
+
+    this._models = found;
+    this._selected = new Set(found.filter(m => !m.alreadyMigrated && m.available).map(m => m.id));
+    this._render();
+  },
+
+  _render() {
+    const list    = document.getElementById('migrateModelList');
+    const results = document.getElementById('migrateResults');
+    const empty   = document.getElementById('migrateEmpty');
+
+    if (!this._models.length) { empty.style.display = 'block'; results.style.display = 'none'; return; }
+    results.style.display = 'block'; empty.style.display = 'none';
+    list.innerHTML = '';
+
+    this._models.forEach(m => {
+      const checked = this._selected.has(m.id);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer';
+      row.innerHTML = `
+        <input type="checkbox" ${checked ? 'checked' : ''} ${m.alreadyMigrated || !m.available ? 'disabled' : ''}
+          style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+        <span style="font-size:1.2rem">${SOURCE_ICONS[m.source] ?? '📦'}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:.9rem">${m.displayName}</div>
+          <div style="font-size:.78rem;color:var(--dim)">${m.source} · ${m.sizeGb} GB · ${m.quantization}</div>
+        </div>
+        <span style="font-size:.75rem;padding:3px 8px;border-radius:99px;background:${
+          m.alreadyMigrated ? 'rgba(16,185,129,.15)' : !m.available ? 'rgba(244,63,94,.1)' : 'rgba(124,58,237,.15)'
+        };color:${
+          m.alreadyMigrated ? 'var(--green)' : !m.available ? 'var(--red)' : 'var(--accent-2)'
+        }">
+          ${m.alreadyMigrated ? '✓ migrated' : !m.available ? '✗ missing' : 'ready'}
+        </span>
+      `;
+      if (!m.alreadyMigrated && m.available) {
+        row.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return;
+          const cb = row.querySelector('input');
+          cb.checked = !cb.checked;
+          if (cb.checked) this._selected.add(m.id); else this._selected.delete(m.id);
+        });
+        row.querySelector('input').addEventListener('change', (e) => {
+          if (e.target.checked) this._selected.add(m.id); else this._selected.delete(m.id);
+        });
+      }
+      list.appendChild(row);
+    });
+  },
+
+  selectAll()   { this._models.filter(m => !m.alreadyMigrated && m.available).forEach(m => this._selected.add(m.id));    this._render(); },
+  deselectAll() { this._selected.clear(); this._render(); },
+
+  async run() {
+    const toMigrate = this._models.filter(m => this._selected.has(m.id));
+    if (!toMigrate.length) { notify('No models selected', 'error'); return; }
+
+    const btn  = document.getElementById('migrateRunBtn');
+    const mode = document.getElementById('migrateMode')?.value ?? 'link';
+    btn.disabled = true;
+    btn.textContent = 'Migrating…';
+
+    for (const m of toMigrate) {
+      await new Promise(r => setTimeout(r, 500));
+      m.alreadyMigrated = true;
+      this._selected.delete(m.id);
+      notify(`✓ ${m.displayName} migrated (${mode})`, 'success');
+    }
+
+    this._render();
+    btn.disabled = false;
+    btn.textContent = 'Migrate selected →';
+
+    // Add to models list
+    for (const m of toMigrate) {
+      state.models.push({ name: m.displayName, path: m.displayName, sizeMb: m.sizeGb * 1024, quantization: m.quantization, loaded: false });
+    }
+    await App.models.render();
+  },
+};
+
 // ─── API Server ───────────────────────────────────────────────────────────────
 
 App.api = {

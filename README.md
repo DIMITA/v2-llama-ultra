@@ -15,14 +15,15 @@ Adaptive quantization · Intelligent streaming · Predictive caching · Zero GPU
 2. [Ecosystem comparison](#2-ecosystem-comparison)
 3. [Architecture](#3-architecture)
 4. [Quick start](#4-quick-start)
-5. [CLI reference](#5-cli-reference)
-6. [Node.js SDK](#6-nodejs-sdk)
-7. [REST API (OpenAI-compatible)](#7-rest-api-openai-compatible)
-8. [Desktop App](#8-desktop-app)
-9. [Pricing & self-hosting](#9-pricing--self-hosting)
-10. [Configuration](#10-configuration)
-11. [Benchmarks](#11-benchmarks)
-12. [Roadmap](#12-roadmap)
+5. [Migrate from Ollama / llama.cpp](#5-migrate-from-ollama--llamacpp)
+6. [CLI reference](#6-cli-reference)
+7. [Node.js SDK](#7-nodejs-sdk)
+8. [REST API (OpenAI-compatible)](#8-rest-api-openai-compatible)
+9. [Desktop App](#9-desktop-app)
+10. [Pricing & self-hosting](#10-pricing--self-hosting)
+11. [Configuration](#11-configuration)
+12. [Benchmarks](#12-benchmarks)
+13. [Roadmap](#13-roadmap)
 13. [Contributing](#13-contributing)
 
 ---
@@ -160,7 +161,93 @@ PRICING_ENABLED=false llama-ultra serve
 
 ---
 
-## 5. CLI Reference
+## 5. Migrate from Ollama / llama.cpp
+
+Already have models installed locally? LLaMA Ultra can import them in seconds — **no re-download required**.
+
+### Supported sources
+
+| Tool | Auto-detected path |
+|------|--------------------|
+| **Ollama** | `~/.ollama/models/` |
+| **llama.cpp** | `~/llama.cpp/models/`, `~/models/` |
+| **LM Studio** | `~/.cache/lm-studio/models/` |
+| **Jan** | `~/jan/models/` |
+| **GPT4All** | `~/.local/share/nomic.ai/GPT4All/` |
+| **LocalAI** | `~/.config/LocalAI/models/` |
+| **Custom path** | `--scan-dir /your/path` |
+
+### Interactive migration (recommended)
+
+```bash
+llama-ultra migrate
+```
+
+```
+  Found models
+
+  #  Model                            Source       Size    Quant   Status
+  ─────────────────────────────────────────────────────────────────────────
+  1  llama3:8b                        🦙 ollama    4.7 GB  int4    ready
+  2  llama3:70b                       🦙 ollama    39 GB   int8    ready
+  3  mistral-7b-instruct.gguf         ⚙️ llamacpp  4.1 GB  int4    ready
+  4  phi-3-mini-4k-instruct.gguf      🖥️ lmstudio  2.2 GB  int4    ✓ migrated
+
+  Select models to migrate:
+  Enter numbers separated by commas (e.g. 1,3), 'all', or 'none'
+
+  > 1,3
+```
+
+### Migration modes
+
+| Mode | Description | Disk cost |
+|------|-------------|-----------|
+| `link` *(default)* | Hard-link — instant, zero extra space (same disk) | 0 |
+| `symlink` | Symbolic link — cross-filesystem, instant | 0 |
+| `inplace` | Register original path — zero disk cost | 0 |
+| `copy` | Full copy — safe, model in both places | +size |
+| `move` | Move + delete original | 0 |
+
+### One-liner options
+
+```bash
+# Migrate everything found
+llama-ultra migrate --all
+
+# Only Ollama models, symlink mode
+llama-ultra migrate --source ollama --mode symlink
+
+# Only llama.cpp, from a custom directory
+llama-ultra migrate --source llamacpp --scan-dir ~/my-models
+
+# Preview without touching files
+llama-ultra migrate --dry-run
+
+# List already-migrated models
+llama-ultra migrate --list
+```
+
+### How Ollama migration works
+
+Ollama stores each model as a set of content-addressed blobs (`~/.ollama/models/blobs/sha256-...`).
+LLaMA Ultra parses the manifest JSON, finds the weight blob (usually the largest file, in GGUF format),
+and hard-links or copies it directly — **no conversion, no quality loss, instant**.
+
+### After migration
+
+```bash
+# Chat immediately with the migrated model
+llama-ultra run llama3:8b
+
+# Or use the SDK
+const client = await createClient();
+await client.load('llama3:8b');
+```
+
+---
+
+## 6. CLI Reference
 
 ```
 llama-ultra <command> [options]
@@ -237,7 +324,7 @@ llama-ultra config reset              # restore defaults
 
 ---
 
-## 6. Node.js SDK
+## 7. Node.js SDK
 
 ### Installation
 
@@ -310,7 +397,7 @@ client
 
 ---
 
-## 7. REST API (OpenAI-compatible)
+## 8. REST API (OpenAI-compatible)
 
 Start the server:
 
@@ -381,7 +468,7 @@ const completion = await openai.chat.completions.create({
 
 ---
 
-## 8. Desktop App
+## 9. Desktop App
 
 The Electron desktop app provides a full GUI:
 
@@ -414,7 +501,7 @@ npm run dist:linux # Linux only
 
 ---
 
-## 9. Pricing & Self-Hosting
+## 10. Pricing & Self-Hosting
 
 ### Plans
 
@@ -472,7 +559,7 @@ STRIPE_TEAM_YEARLY_PRICE_ID=price_...
 
 ---
 
-## 10. Configuration
+## 11. Configuration
 
 ### Environment variables
 
@@ -521,7 +608,7 @@ Managed via `llama-ultra config set <key> <value>`:
 
 ---
 
-## 11. Benchmarks
+## 12. Benchmarks
 
 All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B.
 
@@ -562,7 +649,7 @@ All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B
 
 ---
 
-## 12. Roadmap
+## 13. Roadmap
 
 ### v1.0 (current)
 - [x] Core engine: chunking, quantization, streaming, cache
@@ -592,7 +679,7 @@ All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B
 
 ---
 
-## 13. Contributing
+## 14. Contributing
 
 Contributions are welcome!
 

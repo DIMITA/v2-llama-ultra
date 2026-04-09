@@ -150,6 +150,42 @@ ipcMain.handle('hw:detect', async () => {
 ipcMain.handle('shell:openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('shell:openUrl',  (_e, url) => shell.openExternal(url));
 
+// ─── IPC: Migration ───────────────────────────────────────────────────────────
+
+ipcMain.handle('migrate:scan', async (_e, extraDirs = []) => {
+  try {
+    const { OllamaScanner } = require('../../src/migrate/ollama');
+    const { LlamaCppScanner } = require('../../src/migrate/llamacpp');
+    const { ModelRegistry } = require('../../src/migrate/index');
+
+    const modelsDir  = store.get('modelsDir');
+    const registry   = new ModelRegistry(modelsDir);
+    const ollama     = new OllamaScanner();
+    const llamaCpp   = new LlamaCppScanner({ extraDirs });
+
+    const ollamaModels   = ollama.isInstalled() ? ollama.scan() : [];
+    const llamaCppModels = llamaCpp.scan();
+
+    return [...ollamaModels, ...llamaCppModels].map(m => ({
+      ...m,
+      id:              `${m.source}::${m.fullName}`,
+      alreadyMigrated: registry.has(`${m.source}::${m.fullName}`),
+    }));
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('migrate:run', async (_e, models, mode = 'link') => {
+  try {
+    const { Migrator } = require('../../src/migrate/index');
+    const migrator = new Migrator({ modelsDir: store.get('modelsDir'), mode });
+    return await migrator.migrate(models);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // ─── Menu ─────────────────────────────────────────────────────────────────────
 
 function setupMenu() {

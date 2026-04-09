@@ -20,6 +20,7 @@ ${chalk.bold.cyan('  LLaMA Ultra')} ${chalk.dim('v' + pkg.version)}
 require('./commands/load')(program);
 require('./commands/run')(program);
 require('./commands/optimize')(program);
+require('./commands/migrate')(program);
 require('./commands/status')(program);
 require('./commands/config')(program);
 require('./commands/serve')(program);

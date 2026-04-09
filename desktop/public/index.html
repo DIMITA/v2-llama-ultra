@@ -268,6 +268,9 @@
       <div class="nav-item" data-page="models">
         <span class="nav-item__icon">📦</span> Models
       </div>
+      <div class="nav-item" data-page="migrate">
+        <span class="nav-item__icon">🔄</span> Migrate
+      </div>
       <div class="nav-item" data-page="optimize">
         <span class="nav-item__icon">⚡</span> Optimize
       </div>
@@ -340,6 +343,80 @@
       <button class="add-model-btn" onclick="App.models.add()">
         <span>+</span> Add model…
       </button>
+    </div>
+
+    <!-- ── Migrate page ─────────────────────────────────────────────────── -->
+    <div class="page" id="page-migrate">
+      <div>
+        <div class="page-title">Migrate models</div>
+        <div class="page-sub">Import your existing models from Ollama, llama.cpp, LM Studio, Jan, or GPT4All — no re-download needed.</div>
+      </div>
+
+      <!-- Scan button -->
+      <div class="card" style="display:flex;align-items:center;gap:16px">
+        <div style="flex:1">
+          <div style="font-weight:600;margin-bottom:4px">Auto-scan</div>
+          <div style="font-size:.85rem;color:var(--dim)">Detects Ollama blobs, llama.cpp dirs, LM Studio, Jan, GPT4All</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button onclick="App.migrate.scan()"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-weight:600">
+            🔍 Scan
+          </button>
+          <button onclick="App.migrate.browse()"
+            style="background:var(--bg-3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer">
+            Browse dir…
+          </button>
+        </div>
+      </div>
+
+      <!-- Migration mode -->
+      <div class="card">
+        <div class="card-title">Transfer mode</div>
+        <div class="settings-list">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Mode</div>
+              <div class="setting-desc" id="migrateModeDesc">Hard-link: instant, zero extra disk space (same filesystem)</div>
+            </div>
+            <select class="ctrl" id="migrateMode" onchange="App.migrate.updateModeDesc()">
+              <option value="link">Hard-link (recommended)</option>
+              <option value="symlink">Symlink (cross-filesystem)</option>
+              <option value="inplace">In-place (register only, no copy)</option>
+              <option value="copy">Copy (safe duplicate)</option>
+              <option value="move">Move (delete from source)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="migrateResults" style="display:none">
+        <div style="font-weight:700;margin-bottom:12px;font-size:.95rem">Found models</div>
+        <div id="migrateModelList" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+          <button onclick="App.migrate.selectAll()"
+            style="background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:.82rem">
+            Select all
+          </button>
+          <button onclick="App.migrate.deselectAll()"
+            style="background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:.82rem">
+            Deselect all
+          </button>
+          <span style="flex:1"></span>
+          <button onclick="App.migrate.run()" id="migrateRunBtn"
+            style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 20px;cursor:pointer;font-weight:600">
+            Migrate selected →
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="migrateEmpty" style="text-align:center;padding:48px;color:var(--dim)">
+        <div style="font-size:3rem;margin-bottom:12px">🔍</div>
+        <div>Click <strong>Scan</strong> to detect installed models.</div>
+        <div style="margin-top:8px;font-size:.82rem">Checks Ollama, llama.cpp, LM Studio, Jan, GPT4All automatically.</div>
+      </div>
     </div>
 
     <!-- ── Optimize page ────────────────────────────────────────────────── -->
