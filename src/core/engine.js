@@ -216,10 +216,44 @@ class UltraEngine extends EventEmitter {
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   _resolveModel(nameOrPath) {
+    // 1. Absolute path given and exists
     if (path.isAbsolute(nameOrPath) && fs.existsSync(nameOrPath)) return nameOrPath;
-    const candidate = path.join(this.modelsDir, nameOrPath);
-    if (fs.existsSync(candidate)) return candidate;
-    throw new Error(`Model not found: ${nameOrPath}`);
+
+    // 2. Check migration registry (~/.llama-ultra/models/models.json)
+    try {
+      const { ModelRegistry } = require('../migrate/index');
+      const registry = new ModelRegistry(this.modelsDir);
+      const entries  = registry.list();
+      // Match by name, fullName, or id (case-insensitive)
+      const entry = entries.find(m =>
+        m.name     === nameOrPath ||
+        m.fullName === nameOrPath ||
+        m.id       === nameOrPath ||
+        m.name?.toLowerCase()     === nameOrPath.toLowerCase() ||
+        m.fullName?.toLowerCase() === nameOrPath.toLowerCase()
+      );
+      if (entry && fs.existsSync(entry.path)) return entry.path;
+    } catch (_) {}
+
+    // 3. Direct filename in modelsDir
+    const candidates = [
+      path.join(this.modelsDir, nameOrPath),
+      path.join(this.modelsDir, nameOrPath + '.gguf'),
+      // sanitized: colons → underscores, slashes → underscores
+      path.join(this.modelsDir, nameOrPath.replace(/[:/]/g, '_') + '.gguf'),
+      path.join(this.modelsDir, nameOrPath.replace(/[:/]/g, '_')),
+    ];
+
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+
+    throw new Error(
+      `Model not found: "${nameOrPath}"\n` +
+      `  Searched in: ${this.modelsDir}\n` +
+      `  Tip: run 'llama-ultra migrate --list' to see available models\n` +
+      `  Tip: use the full path: llama-ultra run /path/to/model.gguf`
+    );
   }
 
   _assertReady() {
