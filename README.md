@@ -17,14 +17,15 @@ Adaptive quantization · Intelligent streaming · Predictive caching · Zero GPU
 4. [Quick start](#4-quick-start)
 5. [Migrate from Ollama / llama.cpp](#5-migrate-from-ollama--llamacpp)
 6. [CLI reference](#6-cli-reference)
-7. [Node.js SDK](#7-nodejs-sdk)
-8. [REST API (OpenAI-compatible)](#8-rest-api-openai-compatible)
-9. [Desktop App](#9-desktop-app)
-10. [Pricing & self-hosting](#10-pricing--self-hosting)
-11. [Configuration](#11-configuration)
-12. [Benchmarks](#12-benchmarks)
-13. [Roadmap](#13-roadmap)
-13. [Contributing](#13-contributing)
+7. [Python SDK](#7-python-sdk)
+8. [Node.js SDK](#8-nodejs-sdk)
+9. [REST API (OpenAI-compatible)](#9-rest-api-openai-compatible)
+10. [Desktop App](#10-desktop-app)
+11. [Pricing & self-hosting](#11-pricing--self-hosting)
+12. [Configuration](#12-configuration)
+13. [Benchmarks](#13-benchmarks)
+14. [Roadmap](#14-roadmap)
+15. [Contributing](#15-contributing)
 
 ---
 
@@ -109,6 +110,9 @@ LLaMA Ultra is **not** a new model. It is the engine that should have existed �
 | `src/core/cache.js` | Predictive LRU cache + KV-cache for inference |
 | `src/core/streaming.js` | Token streaming (SSE, JSON, text) with back-pressure |
 | `src/core/engine.js` | Orchestrator — wires all modules together |
+| `src/core/backends/ollama.js` | Real inference via Ollama HTTP API (`/api/chat`, streaming) |
+| `src/migrate/ollama.js` | Parse Ollama manifests, detect blobs across all install paths |
+| `src/migrate/llamacpp.js` | Scan llama.cpp / LM Studio / Jan / GPT4All directories |
 | `src/sdk/index.js` | Node.js SDK with OpenAI-compatible interface |
 | `src/api/server.js` | Express HTTP server, OpenAI-compatible endpoints |
 | `src/pricing/index.js` | Pricing guard + Stripe integration + kill-switch |
@@ -137,6 +141,24 @@ npm install v2-llama-ultra
 ```
 
 ### Run in 30 seconds
+
+**With Ollama (recommended — real inference):**
+
+```bash
+# Pull a model via Ollama
+llama-ultra pull deepseek-coder-v2:latest
+
+# Start a multi-turn chat session
+llama-ultra run deepseek-coder-v2:latest
+
+# List all your models (Ollama + migrated)
+llama-ultra models
+
+# Benchmark a model (real t/s)
+llama-ultra bench deepseek-coder-v2:latest
+```
+
+**With a local GGUF file:**
 
 ```bash
 # 1. Check your hardware profile
@@ -254,9 +276,15 @@ llama-ultra <command> [options]
 
 Commands:
   status                      Show hardware profile & engine status
-  optimize <model>            Pre-chunk and quantize a model
-  run <model>                 Interactive chat session
+  models                      List all available models
+  pull <model>                Download a model from Ollama registry
+  rm <model>                  Remove a model from the registry
+  run <model>                 Interactive multi-turn chat session
+  bench <model>               Benchmark a model (real t/s measurement)
+  profiles <subcommand>       Manage named chat profiles
   load <model>                Load a model (without chat)
+  optimize <model>            Pre-chunk and quantize a model
+  migrate                     Import models from Ollama / llama.cpp / etc.
   serve                       Start HTTP API server
   config <subcommand>         Manage configuration
 
@@ -283,6 +311,189 @@ Options:
   - Chunk size   : 256 MB
 ```
 
+### `llama-ultra models`
+
+Lists all available models from Ollama and the local registry:
+
+```bash
+llama-ultra models              # full table
+llama-ultra models --ollama-only
+llama-ultra models --local-only
+llama-ultra models --json       # raw JSON
+```
+
+```
+  LLaMA Ultra › models
+
+  NAME                          SIZE       QUANT    SOURCE
+  ──────────────────────────────────────────────────────────
+  deepseek-coder-v2:latest      8.90 GB    unknown  ollama
+  qwen3-coder:30b               18.00 GB   unknown  ollama
+  gpt-oss:20b                   13.00 GB   unknown  ollama
+
+  Total: 3 model(s)
+```
+
+### `llama-ultra pull <model>`
+
+Downloads a model directly from the Ollama registry with a live progress bar:
+
+```bash
+llama-ultra pull llama3:8b
+llama-ultra pull deepseek-coder-v2:latest
+llama-ultra pull qwen3-coder:30b --host http://localhost:11434
+```
+
+```
+  Pulling deepseek-coder-v2:latest via Ollama…
+
+  pulling manifest
+  pulling layer          ██████████████████░░░░  82%  7324/8924 MB
+  verifying sha256 digest
+  writing manifest
+
+  Model "deepseek-coder-v2:latest" pulled successfully.
+  Run it with: llama-ultra run deepseek-coder-v2:latest
+```
+
+### `llama-ultra run <model>`
+
+Multi-turn interactive chat. The full conversation history is sent to the model on each turn.
+
+```bash
+llama-ultra run deepseek-coder-v2:latest
+llama-ultra run llama3:8b \
+  --temperature 0.3 \
+  --top-p 0.95 \
+  --max-tokens 4096 \
+  --system "You are a senior software engineer."
+```
+
+```
+  Ultra LLaMA Engine  v2
+  Loading deepseek-coder-v2:latest…
+
+  Hardware : 8 cores · 6.4 GB free · profile: medium
+  Backend  : ollama
+  Model    : UNKNOWN · 8.90 GB compressed
+  Chunking : ? chunks × 256 MB
+
+  Type /help for commands.
+
+You > Explain the difference between TCP and UDP
+AI  > TCP (Transmission Control Protocol) provides…
+  [342 tok · 45.2 t/s · ollama · turn 1]
+
+You > /temp 0.8
+  Temperature set to 0.8
+
+You > /save chat-2024.json
+  Saved to /home/user/chat-2024.json
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--temperature` | `0.7` | Sampling temperature (0–2) |
+| `--top-p` | `0.9` | Nucleus sampling (0–1) |
+| `--max-tokens` | `2048` | Tokens per response |
+| `--max-turns` | `0` | Max turns kept in context (0 = unlimited) |
+| `--system` | — | System prompt |
+| `--profile` | — | Load settings from a saved profile |
+
+**Slash commands available inside the chat:**
+
+| Command | Description |
+|---------|-------------|
+| `/clear` | Clear conversation history |
+| `/history` | Show all previous exchanges |
+| `/save [file]` | Save conversation to JSON |
+| `/model` | Show loaded model details |
+| `/status` | Show engine status (hardware, cache) |
+| `/temp <n>` | Set temperature (0–2) live |
+| `/tokens <n>` | Set max tokens for next responses |
+| `/turns <n>` | Set max turns in context live (0 = unlimited) |
+| `/system <text>` | Change system prompt (`/system off` to clear) |
+| `/profile <name>` | Apply a saved profile mid-session |
+| `/help` | List all commands |
+| `/exit` or `/quit` | Exit |
+
+### `llama-ultra bench <model>`
+
+Runs N inference passes and reports real performance metrics:
+
+```bash
+llama-ultra bench deepseek-coder-v2:latest
+llama-ultra bench llama3:8b --runs 5 --max-tokens 256 --warmup
+```
+
+```
+  LLaMA Ultra › bench
+  Model   : deepseek-coder-v2:latest
+  Runs    : 3 × 128 max tokens
+
+  Backend : ollama
+  Profile : medium · 6.4 GB free
+  Cold start: 342 ms
+
+  Run 1/3… ████████░░  45.2 t/s · 128 tok · 2831 ms
+  Run 2/3… █████████░  47.1 t/s · 128 tok · 2716 ms
+  Run 3/3… ████████░░  44.8 t/s · 128 tok · 2857 ms
+
+  ─── Results ───────────────────────────────
+  Avg t/s        : 45.7
+  Min / Max t/s  : 44.8 / 47.1
+  Avg latency    : 2801 ms/run
+  Total tokens   : 384
+  Cold start     : 342 ms
+  RAM delta      : +124 MB
+  Model size     : 8.90 GB (UNKNOWN)
+  Backend        : ollama
+  Profile        : medium
+
+  Grade : A  — Very fast (≥ 30 t/s)
+```
+
+### `llama-ultra rm <model>`
+
+Remove a model from the local registry. By default keeps the file on disk.
+
+```bash
+llama-ultra rm llama3:8b
+llama-ultra rm llama3:8b --delete-file   # also delete from disk
+llama-ultra rm llama3:8b --yes           # skip confirmation
+```
+
+### `llama-ultra profiles`
+
+Save and load named chat configurations (system prompt, temperature, model, etc.):
+
+```bash
+# Create a profile
+llama-ultra profiles save coder \
+  --model deepseek-coder-v2:latest \
+  --system "You are a senior software engineer. Be concise and precise." \
+  --temperature 0.2 \
+  --max-tokens 4096
+
+# List all profiles
+llama-ultra profiles list
+
+# Get the run command for a profile
+llama-ultra profiles use coder
+#   llama-ultra run deepseek-coder-v2:latest --system "..." --temperature 0.2 --max-tokens 4096
+
+# Apply a profile at startup
+llama-ultra run deepseek-coder-v2:latest --profile coder
+
+# Apply a profile mid-session with /profile
+You > /profile coder
+
+# Delete a profile
+llama-ultra profiles rm coder
+```
+
 ### `llama-ultra optimize <model>`
 
 ```bash
@@ -291,16 +502,6 @@ llama-ultra optimize llama-3-70b.gguf \
   --layers 80 \
   --chunk-size 256 \
   --dry-run          # preview without writing
-```
-
-### `llama-ultra run <model>`
-
-```bash
-llama-ultra run llama-3-7b.gguf \
-  --quantization auto \   # auto | int4 | int8 | fp16
-  --max-tokens 1024 \
-  --system "You are a helpful assistant." \
-  --speed 0               # tokens/sec target (0=unlimited)
 ```
 
 ### `llama-ultra serve`
@@ -324,7 +525,84 @@ llama-ultra config reset              # restore defaults
 
 ---
 
-## 7. Node.js SDK
+## 7. Python SDK
+
+```bash
+pip install llama-ultra
+```
+
+Requires a running LLaMA Ultra server (`llama-ultra serve`).
+
+### Sync client
+
+```python
+from llama_ultra import LlamaUltraClient
+
+client = LlamaUltraClient("http://localhost:3000")
+
+# One-shot generation
+text = client.generate("llama3:8b", "Explain quantum computing simply")
+print(text)
+
+# Streaming
+for token in client.stream("deepseek-coder-v2:latest", "Write a binary search in Python"):
+    print(token, end="", flush=True)
+
+# Multi-turn
+messages = [
+    {"role": "system",    "content": "You are a helpful assistant."},
+    {"role": "user",      "content": "What is 2+2?"},
+    {"role": "assistant", "content": "4"},
+    {"role": "user",      "content": "Multiply that by 10"},
+]
+for token in client.stream("llama3:8b", "", messages=messages):
+    print(token, end="", flush=True)
+
+# OpenAI-compatible
+resp = client.chat.completions.create(
+    model="llama3:8b",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(resp.choices[0].message.content)
+
+# Engine status
+status = client.status()
+print(status.hardware.profile, status.loaded_models)
+```
+
+### Async client
+
+```python
+import asyncio
+from llama_ultra import AsyncLlamaUltraClient
+
+async def main():
+    async with AsyncLlamaUltraClient("http://localhost:3000") as client:
+        text = await client.generate("llama3:8b", "Hello!")
+        print(text)
+
+        async for token in client.stream("llama3:8b", "Write a poem"):
+            print(token, end="", flush=True)
+
+asyncio.run(main())
+```
+
+### Use with the `openai` Python package
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:3000/v1", api_key="local")
+response = client.chat.completions.create(
+    model="llama3:8b",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)
+```
+
+---
+
+## 8. Node.js SDK
 
 ### Installation
 
@@ -397,7 +675,7 @@ client
 
 ---
 
-## 8. REST API (OpenAI-compatible)
+## 9. REST API (OpenAI-compatible)
 
 Start the server:
 
@@ -468,7 +746,7 @@ const completion = await openai.chat.completions.create({
 
 ---
 
-## 9. Desktop App
+## 10. Desktop App
 
 The Electron desktop app provides a full GUI:
 
@@ -501,7 +779,7 @@ npm run dist:linux # Linux only
 
 ---
 
-## 10. Pricing & Self-Hosting
+## 11. Pricing & Self-Hosting
 
 ### Plans
 
@@ -559,7 +837,7 @@ STRIPE_TEAM_YEARLY_PRICE_ID=price_...
 
 ---
 
-## 11. Configuration
+## 12. Configuration
 
 ### Environment variables
 
@@ -608,7 +886,7 @@ Managed via `llama-ultra config set <key> <value>`:
 
 ---
 
-## 12. Benchmarks
+## 13. Benchmarks
 
 All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B.
 
@@ -649,37 +927,55 @@ All benchmarks on **Apple M1 MacBook Air (8GB RAM), no GPU offload**, LLaMA 3 7B
 
 ---
 
-## 13. Roadmap
+## 14. Roadmap
 
-### v1.0 (current)
-- [x] Core engine: chunking, quantization, streaming, cache
-- [x] CLI (status, optimize, run, serve, config)
+### v1.0 ✅ (released)
+- [x] Core engine: chunking, quantization, streaming, predictive LRU cache
+- [x] CLI (status, optimize, run, load, serve, config, migrate)
 - [x] Node.js SDK with OpenAI-compatible interface
-- [x] REST API server (OpenAI-compatible)
-- [x] Electron desktop app
-- [x] Pricing system with kill-switch
+- [x] REST API server (OpenAI-compatible endpoints)
+- [x] Electron desktop app (chat, models, optimize, API server, settings)
+- [x] Pricing system (Free/Pro/Team/Enterprise) with kill-switch
+- [x] Model migration from Ollama, llama.cpp, LM Studio, Jan, GPT4All, LocalAI
 - [x] Landing page
 
-### v1.1
-- [ ] Native GGML binding (replace JS mock tokenizer)
-- [ ] Python SDK
-- [ ] Whisper audio model support
-- [ ] Model Hub (browse & download popular models)
+### v1.1 ✅ (released)
+- [x] Real inference via **Ollama HTTP backend** (replaces JS mock tokenizer)
+  - `POST /api/chat` with `stream: true`, ndjson parsing, real t/s from `eval_duration`
+  - Auto-detection at startup (`isOllamaRunning`), graceful fallback to mock
+- [x] **Multi-turn conversation** in `run` — full `messages[]` history sent to model each turn
+- [x] **Slash commands** in interactive chat: `/clear`, `/history`, `/save`, `/model`, `/temp`, `/tokens`, `/system`, `/help`
+- [x] **`--temperature`** and **`--top-p`** flags on `run` command
+- [x] **`llama-ultra pull <model>`** — download models from Ollama registry with live progress bar
+- [x] **`llama-ultra models`** — table of all Ollama + registry models (with `--json`, `--ollama-only`, `--local-only`)
+- [x] **`llama-ultra bench <model>`** — N-run benchmark: avg/min/max t/s, cold-start, RAM delta, grade S/A/B/C/D/F
+- [x] Ollama scanner extended to all Linux install paths (systemd, snap, user install)
+- [x] `migrate --diagnose`, `--ollama-dir`, `--dry-run`, `--all` flags
 
-### v1.2
-- [ ] Stable Diffusion support
-- [ ] Multi-model serving (load several models, route by task)
+### v1.2 ✅ (released)
+- [x] **Python SDK** (`pip install llama-ultra`) — sync + async clients, OpenAI-compatible
+- [x] **Multi-model serving** — load N models simultaneously, route by name in `infer(opts.model)`
+- [x] **`llama-ultra rm <model>`** — remove from registry, optional `--delete-file`
+- [x] **`llama-ultra profiles`** — save/load/use named chat configs (system prompt, temperature, model…)
+- [x] **Context auto-trim** — `--max-turns <n>` keeps only the last N turn-pairs in context
+- [x] `/turns`, `/profile` slash commands in interactive chat
+- [x] `engine.loadedModels` Map — `listLoadedModels()`, `unload(name)` for specific model
+
+### v1.3 (planned)
+- [ ] Whisper audio model support (`llama-ultra transcribe`)
 - [ ] Tauri desktop app (lighter than Electron)
-- [ ] Plugin system for custom quantizers
+- [ ] Plugin system for custom backends
+- [ ] Native GGML binding (direct inference without Ollama)
 
-### v2.0
+### v2.0 (planned)
+- [ ] Stable Diffusion support
 - [ ] Distributed inference (split model across network nodes)
 - [ ] WASM runtime (run in browser)
 - [ ] Fine-tuning support (LoRA adapters)
 
 ---
 
-## 14. Contributing
+## 15. Contributing
 
 Contributions are welcome!
 
