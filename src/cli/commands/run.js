@@ -4,8 +4,19 @@ const chalk    = require('chalk');
 const readline = require('readline');
 const fs       = require('fs');
 const path     = require('path');
+const os       = require('os');
 const { UltraEngine } = require('../../core/engine');
 const { loadConfig }  = require('../../config/loader');
+
+const PROFILES_PATH = path.join(os.homedir(), '.llama-ultra', 'profiles.json');
+
+function loadProfile(name) {
+  if (!fs.existsSync(PROFILES_PATH)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(PROFILES_PATH, 'utf8'));
+    return data[name] ?? null;
+  } catch { return null; }
+}
 
 const HELP_TEXT = `
   ${chalk.bold('Slash commands:')}
@@ -14,11 +25,13 @@ const HELP_TEXT = `
   ${chalk.cyan('/save [file]')}    Save conversation to JSON file
   ${chalk.cyan('/model')}          Show loaded model info
   ${chalk.cyan('/status')}         Show engine status (hardware, cache)
-  ${chalk.cyan('/temp <n>')}       Set temperature (0–2, default 0.7)
-  ${chalk.cyan('/tokens <n>')}     Set max tokens for next responses
-  ${chalk.cyan('/system <text>')}  Change system prompt (use /system off to clear)
-  ${chalk.cyan('/help')}           Show this help
-  ${chalk.cyan('/exit')} ${chalk.dim('or')} ${chalk.cyan('/quit')}   Exit
+  ${chalk.cyan('/temp <n>')}         Set temperature (0–2, default 0.7)
+  ${chalk.cyan('/tokens <n>')}       Set max tokens for next responses
+  ${chalk.cyan('/turns <n>')}        Set max turns in context (0 = unlimited)
+  ${chalk.cyan('/system <text>')}    Change system prompt (use /system off to clear)
+  ${chalk.cyan('/profile <name>')}   Apply a saved profile
+  ${chalk.cyan('/help')}             Show this help
+  ${chalk.cyan('/exit')} ${chalk.dim('or')} ${chalk.cyan('/quit')}     Exit
 `;
 
 module.exports = function registerRun(program) {
@@ -31,8 +44,26 @@ module.exports = function registerRun(program) {
     .option('--temperature <n>',          'Sampling temperature (0–2)', '0.7')
     .option('--top-p <n>',               'Top-p nucleus sampling (0–1)', '0.9')
     .option('--speed <tps>',             'Target tokens/second (0 = unlimited)', '0')
+    .option('--max-turns <n>',           'Max conversation turns kept in context (0 = unlimited)', '0')
+    .option('--profile <name>',          'Load settings from a saved profile')
     .action(async (model, opts) => {
-      const cfg    = await loadConfig();
+      const cfg = await loadConfig();
+
+      // Merge profile settings (CLI flags take precedence over profile)
+      if (opts.profile) {
+        const prof = loadProfile(opts.profile);
+        if (!prof) {
+          console.error(chalk.red(`  Profile not found: "${opts.profile}". Run: llama-ultra profiles list`));
+          process.exit(1);
+        }
+        if (prof.system      && opts.system      === undefined) opts.system      = prof.system;
+        if (prof.temperature && opts.temperature  === '0.7')    opts.temperature = String(prof.temperature);
+        if (prof.topP        && opts.topP         === '0.9')    opts.topP        = String(prof.topP);
+        if (prof.maxTokens   && opts.maxTokens    === '2048')   opts.maxTokens   = String(prof.maxTokens);
+        if (prof.model && model === prof.model) { /* already set */ }
+        console.log(chalk.dim(`  Profile  : ${opts.profile}\n`));
+      }
+
       const engine = new UltraEngine({
         modelsDir:    cfg.modelsDir,
         quantization: opts.quantization,
@@ -66,6 +97,7 @@ module.exports = function registerRun(program) {
       let systemPrompt = opts.system ?? null;
       let temperature  = parseFloat(opts.temperature);
       let maxTokens    = parseInt(opts.maxTokens, 10);
+      let maxTurns     = parseInt(opts.maxTurns, 10);  // 0 = unlimited
       let busy         = false;
 
       if (systemPrompt) {
@@ -192,6 +224,30 @@ module.exports = function registerRun(program) {
               break;
             }
 
+            case 'turns': {
+              const val = parseInt(args[0], 10);
+              if (isNaN(val) || val < 0) {
+                console.log(chalk.red('  Max turns must be ≥ 0 (0 = unlimited)\n'));
+              } else {
+                maxTurns = val;
+                console.log(chalk.dim(`  Context window set to ${maxTurns === 0 ? 'unlimited' : maxTurns + ' turns'}\n`));
+              }
+              break;
+            }
+
+            case 'profile': {
+              const profName = args[0];
+              if (!profName) { console.log(chalk.red('  Usage: /profile <name>\n')); break; }
+              const prof = loadProfile(profName);
+              if (!prof) { console.log(chalk.red(`  Profile not found: "${profName}"\n`)); break; }
+              if (prof.system)      { systemPrompt = prof.system;             }
+              if (prof.temperature) { temperature  = prof.temperature;        }
+              if (prof.topP)        { /* stored for next infer call */        }
+              if (prof.maxTokens)   { maxTokens    = prof.maxTokens;          }
+              console.log(chalk.dim(`  Profile "${profName}" applied.\n`));
+              break;
+            }
+
             default:
               console.log(chalk.red(`  Unknown command: /${cmd}  (type /help)\n`));
           }
@@ -213,9 +269,16 @@ module.exports = function registerRun(program) {
         const userMsg = { role: 'user', content: input };
         history.push(userMsg);
 
+        // Context auto-trim: keep only the last N turn-pairs (user + assistant)
+        let trimmedHistory = history;
+        if (maxTurns > 0 && history.length > maxTurns * 2) {
+          trimmedHistory = history.slice(-(maxTurns * 2));
+          process.stdout.write(chalk.dim(`  [context trimmed to ${maxTurns} turns]\n`));
+        }
+
         const messages = [
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-          ...history,
+          ...trimmedHistory,
         ];
 
         process.stdout.write(chalk.yellow('AI  > '));

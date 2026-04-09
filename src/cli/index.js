@@ -27,6 +27,8 @@ require('./commands/serve')(program);
 require('./commands/pull')(program);
 require('./commands/models')(program);
 require('./commands/bench')(program);
+require('./commands/rm')(program);
+require('./commands/profiles')(program);
 
 // Global error handler
 program.exitOverride();

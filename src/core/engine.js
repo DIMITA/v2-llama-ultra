@@ -41,11 +41,18 @@ class UltraEngine extends EventEmitter {
     this.enableGPU      = enableGPU;
     this.maxRamPercent  = maxRamPercent;
 
-    this.hardware   = null;
-    this.cache      = new PredictiveCache({ maxSizeMb: maxCacheSizeMb, prefetchWindow: 2 });
-    this.kvCache    = new KVCache();
-    this.loadedModel = null;
-    this._ready     = false;
+    this.hardware     = null;
+    this.cache        = new PredictiveCache({ maxSizeMb: maxCacheSizeMb, prefetchWindow: 2 });
+    this.kvCache      = new KVCache();
+    /** @type {Map<string, object>} key = nameOrPath used at load time */
+    this.loadedModels = new Map();
+    this._ready       = false;
+  }
+
+  /** Backward-compat: returns the most recently loaded model, or null. */
+  get loadedModel() {
+    if (this.loadedModels.size === 0) return null;
+    return [...this.loadedModels.values()].at(-1);
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────
@@ -130,7 +137,8 @@ class UltraEngine extends EventEmitter {
       if (entry?.source === 'ollama') ollamaName = entry.fullName;
     } catch (_) {}
 
-    this.loadedModel = {
+    const entry = {
+      key:          nameOrPath,
       path:         modelPath,
       ollamaName,
       chunker,
@@ -141,9 +149,35 @@ class UltraEngine extends EventEmitter {
       loadedAt:     new Date().toISOString(),
     };
 
+    this.loadedModels.set(nameOrPath, entry);
     this.kvCache.reset();
-    this.emit('model:load:done', this.loadedModel);
-    return this.loadedModel;
+    this.emit('model:load:done', entry);
+    return entry;
+  }
+
+  /**
+   * Resolve a model key to the loaded entry.
+   * Accepts the original nameOrPath, or falls back to the last loaded model.
+   * @param {string} [nameOrPath]
+   * @returns {object}
+   */
+  _getLoadedModel(nameOrPath) {
+    if (nameOrPath && this.loadedModels.has(nameOrPath)) {
+      return this.loadedModels.get(nameOrPath);
+    }
+    // Try matching by ollamaName or path basename
+    if (nameOrPath) {
+      for (const m of this.loadedModels.values()) {
+        if (
+          m.ollamaName === nameOrPath ||
+          path.basename(m.path) === nameOrPath ||
+          path.basename(m.path, '.gguf') === nameOrPath
+        ) return m;
+      }
+    }
+    // Fallback to last loaded
+    if (this.loadedModels.size > 0) return [...this.loadedModels.values()].at(-1);
+    return null;
   }
 
   // ─── Inference (streaming) ────────────────────────────────────────────────
@@ -160,25 +194,31 @@ class UltraEngine extends EventEmitter {
    * @param {string}   opts.format       'text'|'json'|'sse'
    * @param {AbortSignal} opts.signal
    */
+  /**
+   * @param {string|Array} promptOrMessages
+   * @param {object} opts
+   * @param {string} [opts.model]  Which loaded model to use (key or name). Defaults to last loaded.
+   */
   infer(promptOrMessages, opts = {}) {
     this._assertReady();
-    if (!this.loadedModel) throw new Error('No model loaded. Call loadModel() first.');
+    const model = this._getLoadedModel(opts.model);
+    if (!model) throw new Error('No model loaded. Call loadModel() first.');
 
     const streamer = new TokenStreamer({
       format: opts.format ?? 'text',
       tokensPerSecondTarget: opts.speed ?? 0,
     });
 
-    setImmediate(() => this._runInference(promptOrMessages, opts, streamer));
+    setImmediate(() => this._runInference(promptOrMessages, opts, streamer, model));
     return streamer;
   }
 
-  async _runInference(promptOrMessages, opts, streamer) {
+  async _runInference(promptOrMessages, opts, streamer, model) {
     try {
       if (this._backend === 'ollama') {
-        await this._runOllama(promptOrMessages, opts, streamer);
+        await this._runOllama(promptOrMessages, opts, streamer, model);
       } else {
-        await this._runMock(promptOrMessages, opts, streamer);
+        await this._runMock(promptOrMessages, opts, streamer, model);
       }
     } catch (err) {
       streamer.destroy(err);
@@ -188,8 +228,8 @@ class UltraEngine extends EventEmitter {
 
   // ─── Ollama backend (real inference) ────────────────────────────────────
 
-  async _runOllama(promptOrMessages, opts, streamer) {
-    const modelName = this.loadedModel.ollamaName ?? this.loadedModel.path;
+  async _runOllama(promptOrMessages, opts, streamer, model) {
+    const modelName = model.ollamaName ?? model.path;
 
     // Accept either a plain string or a pre-built messages array
     let messages;
@@ -224,7 +264,7 @@ class UltraEngine extends EventEmitter {
 
   // ─── Mock backend (fallback — no Ollama) ────────────────────────────────
 
-  async _runMock(promptOrMessages, opts, streamer) {
+  async _runMock(promptOrMessages, opts, streamer, _model) {
     const prompt    = Array.isArray(promptOrMessages)
       ? promptOrMessages.filter(m => m.role === 'user').pop()?.content ?? ''
       : promptOrMessages;
@@ -240,29 +280,55 @@ class UltraEngine extends EventEmitter {
 
   // ─── Unload ───────────────────────────────────────────────────────────────
 
-  unload() {
-    if (this.loadedModel) {
-      this.loadedModel.chunker.unloadAll();
+  /**
+   * Unload a specific model by key, or all models if no key is given.
+   * @param {string} [nameOrPath]
+   */
+  unload(nameOrPath) {
+    if (nameOrPath) {
+      const m = this._getLoadedModel(nameOrPath);
+      if (m) {
+        m.chunker.unloadAll();
+        this.loadedModels.delete(m.key);
+        this.emit('model:unload', { path: m.path });
+      }
+    } else {
+      for (const m of this.loadedModels.values()) {
+        m.chunker.unloadAll();
+        this.emit('model:unload', { path: m.path });
+      }
+      this.loadedModels.clear();
       this.cache.clear();
       this.kvCache.reset();
-      this.emit('model:unload', { path: this.loadedModel.path });
-      this.loadedModel = null;
     }
+  }
+
+  /** List all currently loaded models (summary). */
+  listLoadedModels() {
+    return [...this.loadedModels.values()].map(m => ({
+      key:             m.key,
+      path:            m.path,
+      ollamaName:      m.ollamaName,
+      quantization:    m.quantization,
+      compressedSizeGb: m.compressedSizeGb,
+      loadedAt:        m.loadedAt,
+    }));
   }
 
   // ─── Status ───────────────────────────────────────────────────────────────
 
   status() {
+    const loadedList = this.listLoadedModels();
     return {
-      ready:       this._ready,
-      hardware:    this.hardware,
-      loadedModel: this.loadedModel ? {
-        path:         this.loadedModel.path,
-        quantization: this.loadedModel.quantization,
-        compressedSizeGb: this.loadedModel.compressedSizeGb,
-        loadedAt:     this.loadedModel.loadedAt,
-      } : null,
-      cache: this.cache.stats,
+      ready:        this._ready,
+      hardware:     this.hardware,
+      backend:      this._backend,
+      loadedModels: Object.fromEntries(
+        loadedList.map(m => [m.key, m])
+      ),
+      // backward-compat: single loadedModel field
+      loadedModel:  loadedList.at(-1) ?? null,
+      cache:        this.cache.stats,
     };
   }
 
